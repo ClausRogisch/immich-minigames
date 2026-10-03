@@ -139,7 +139,8 @@ from the Admin panel by an existing admin (see "Creating an admin account" below
 **Each player connects their own Immich account.** After signing up, the app asks for an Immich API
 key (Immich → *Account Settings → API Keys*, with the `user.read`, `asset.view` and `person.read`
 permissions). From then on, that player's games only use what their Immich user can see: their own
-library including external libraries, their partners' shared photos, and albums shared with them.
+library including external libraries, their partners' shared photos, and albums shared with them
+(shared-album photos capped at 30% of a photo game).
 Daily challenges are per player too. See [docs/IMMICH_API_KEY.md](docs/IMMICH_API_KEY.md) for the
 details to share with your players.
 

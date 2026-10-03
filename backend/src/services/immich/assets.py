@@ -1,22 +1,85 @@
 """Postgres queries over Immich's `asset`/`asset_exif` tables."""
 
 import math
+import random
+import threading
+import time
 from datetime import date
 from typing import Literal
 from uuid import UUID
 
-from sqlalchemy import Date, cast, exists, extract, func, select
-from sqlalchemy.engine import Engine
+from sqlalchemy import Date, Select, cast, exists, extract, func, select
+from sqlalchemy.engine import Connection, Engine, Row
 
 from domain.asset import Asset
 from persistence.immich_tables import asset, asset_exif, asset_file
 
 from ._random import sample_by_id_pivot
 from ._rows import row_to_asset
-from ._scope import visible_asset
+from ._scope import home_asset, shared_album_asset, visible_asset
 
 MediaType = Literal["photo", "video", "any"]
 LocationField = Literal["city", "country"]
+
+# Shared albums can hold far more photos than a player's own library (a family album with thousands
+# of photos next to a few hundred of their own), so randomly sampled photos draw from the two parts
+# of a player's view (see ._scope) separately: shared-album-only photos get a share proportional to
+# their pool size, but never more than this - the player's own and partners' photos stay the bulk
+# of every game. A player with no home photos at all still gets everything from shared albums.
+SHARED_ALBUM_MAX_SHARE = 0.3
+# Pool sizes only steer the mix, they don't need to be exact - recounting them on every round would
+# double the cost of a sample for no visible benefit.
+_POOL_SIZES_TTL_SECONDS = 600
+_pool_sizes: dict[UUID, tuple[float, int, int]] = {}
+_pool_sizes_lock = threading.Lock()
+
+
+def shared_album_share(home_count: int, shared_only_count: int, cap: float = SHARED_ALBUM_MAX_SHARE) -> float:
+    """Probability that one sampled photo comes from shared albums - see SHARED_ALBUM_MAX_SHARE."""
+    if shared_only_count == 0:
+        return 0.0
+    if home_count == 0:
+        return 1.0
+    return min(shared_only_count / (home_count + shared_only_count), cap)
+
+
+def _eligible() -> list:
+    return [asset.c.status == "active", asset.c.visibility == "timeline", asset.c.deletedAt.is_(None)]
+
+
+def _pool_sizes_for(conn: Connection, user_id: UUID) -> tuple[int, int]:
+    """(home, shared-album-only) eligible photo counts for this player, cached per process."""
+    now = time.monotonic()
+    with _pool_sizes_lock:
+        cached = _pool_sizes.get(user_id)
+    if cached is not None and now - cached[0] < _POOL_SIZES_TTL_SECONDS:
+        return cached[1], cached[2]
+    home = conn.execute(select(func.count()).select_from(asset).where(*_eligible(), home_asset(user_id))).scalar_one()
+    shared_only = conn.execute(
+        select(func.count()).select_from(asset).where(*_eligible(), shared_album_asset(user_id), ~home_asset(user_id))
+    ).scalar_one()
+    with _pool_sizes_lock:
+        _pool_sizes[user_id] = (now, home, shared_only)
+    return home, shared_only
+
+
+def _sample_mixed(conn: Connection, stmt: Select, user_id: UUID, limit: int) -> list[Row]:
+    """`limit` random rows of `stmt` (already restricted to visible_asset), mixing the player's home
+    and shared-album-only photos per shared_album_share. Whichever part runs out is topped up from
+    the other, so this returns as many rows as plain sampling would."""
+    share = shared_album_share(*_pool_sizes_for(conn, user_id))
+    want_shared = sum(1 for _ in range(limit) if random.random() < share)
+    shared_stmt = stmt.where(~home_asset(user_id))
+    home_stmt = stmt.where(home_asset(user_id))
+
+    rows = sample_by_id_pivot(conn, shared_stmt, asset.c.id, want_shared)
+    rows += sample_by_id_pivot(conn, home_stmt, asset.c.id, limit - len(rows))
+    if len(rows) < limit:
+        taken = [row.id for row in rows]
+        top_up = shared_stmt.where(asset.c.id.notin_(taken)) if taken else shared_stmt
+        rows += sample_by_id_pivot(conn, top_up, asset.c.id, limit - len(rows))
+    random.shuffle(rows)
+    return rows
 
 
 def get_assets(
@@ -112,7 +175,9 @@ def get_assets(
         stmt = stmt.where(asset.c.id.notin_(exclude_ids))
 
     with engine.connect() as conn:
-        if randomize:
+        if randomize and user_id is not None:
+            rows = _sample_mixed(conn, stmt, user_id, limit)
+        elif randomize:
             # Pivot on asset.id (see ._random's docstring for why that's safe) instead of
             # `ORDER BY random()`, which would force a full scan+sort of every matching asset.
             rows = sample_by_id_pivot(conn, stmt, asset.c.id, limit)

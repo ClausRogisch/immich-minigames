@@ -139,9 +139,14 @@ what that user sees in Immich:
 
 | | Visible to user U |
 |---|---|
-| Assets | `ownerId = U` (except the locked folder), or owned by a partner sharing with U and on their timeline. External libraries are ordinary assets owned by the library owner. |
-| People | U's own `person` row per cluster. Asset counts only count faces on assets U can see. |
+| Assets | *Home*: `ownerId = U` (except the locked folder), or owned by a partner sharing with U and on their timeline. External libraries are ordinary assets owned by the library owner. *Shared album*: in any non-deleted album U is an `album_user` of. |
+| People | U's own `person` row per cluster. Asset counts only count faces on assets U can see. A face in a cluster U has no row for is invisible to every people query, so shared-album photos of other users only take part in people games through clusters U shares with their owner. |
 | Albums | Any album U is an `album_user` of. Their assets aren't further filtered, since an album member sees all of them. |
+
+Random photo sampling (`assets.py`'s `get_assets(randomize=True)`) draws the two asset parts
+separately: shared-album-only photos get a share proportional to their pool size, capped at
+`SHARED_ALBUM_MAX_SHARE` (30%), with pool sizes cached per player for 10 minutes. Whichever part
+runs out is topped up from the other.
 
 `user_id=None` is unscoped (one `person` row per cluster, preferring a named, visible one). It's
 only for admin views (`get_admin_immich_service`) and the ML embedding cache, which is per face

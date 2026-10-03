@@ -6,10 +6,16 @@ what that Immich account can see:
 - your own photos and videos, including your **external libraries**
 - photos your **partners** share with you (Immich → *Account Settings → Partner Sharing*), whether
   or not you show them in your own timeline
-- **albums** you own or that are shared with you
+- **albums** you own or that are shared with you, including the photos in them. Photos you only
+  see through a shared album make up at most 30% of a photo game (less if they're a smaller part of
+  your library), so a big shared album doesn't crowd out your own photos. If you have no photos of
+  your own, shared albums are used for everything.
 - **people** as *you* named them in Immich. Since Immich 3, every user names face clusters
   independently, so a person you haven't named yourself won't show up in people-based games, even
-  if a partner named them. Only named people you haven't hidden are used.
+  if a partner named them. Only named people you haven't hidden are used. The same goes for faces
+  in shared-album photos: a person there only counts if they're in one of *your* face clusters
+  (for example after you joined the album owner's face clusters in Immich). Otherwise the photo is
+  still used in photo games, just never for questions about people.
 
 Photos in your Locked Folder are never used, and neither are your partners' archived photos
 (Immich doesn't show you those either).
