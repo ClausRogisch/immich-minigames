@@ -2,6 +2,7 @@ import type { ReactNode } from "react"
 import { useTranslation } from "react-i18next"
 
 import { assetThumbnailUrl } from "../../api/games"
+import { ImmichPill } from "../shared/ImmichLink"
 import { Spinner } from "../shared/Spinner"
 import { useQueuedThumbnail } from "../shared/thumbnailQueue"
 
@@ -57,6 +58,9 @@ interface TimelineCardProps {
   // card. Undefined for the central "card to place" (its own zoom lives directly on AssetPhoto in
   // TimelineGame.tsx) and for "Ver rondas" (whose actions menu already offers "Ver en Immich").
   onClick?: () => void
+  // Live-play track only - an ImmichPill over the top-right corner, linking to this (already
+  // placed, so already dated) card's photo in Immich. "Ver rondas" has its actions menu instead.
+  immichLink?: boolean
 }
 
 export function TimelineCard({
@@ -68,6 +72,7 @@ export function TimelineCard({
   badge,
   actions,
   onClick,
+  immichLink = false,
 }: TimelineCardProps) {
   const { i18n } = useTranslation()
   const { url, failed } = useQueuedThumbnail(assetThumbnailUrl(assetId))
@@ -108,6 +113,12 @@ export function TimelineCard({
           className="absolute top-1.5 right-1.5 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-black/40"
         >
           {actions}
+        </div>
+      )}
+      {immichLink && (
+        // Its own tap opens Immich, not the card's full-photo view (onClick above).
+        <div onClick={(e) => e.stopPropagation()}>
+          <ImmichPill kind="asset" id={assetId} className="top-1.5 right-1.5" />
         </div>
       )}
       <div className="relative flex-1 overflow-hidden bg-app-bg">

@@ -291,6 +291,7 @@ export function MoreOrLessGame({ coverUrl, hasRoundsView, daily = false }: GameC
             valueKind={config.valueKind}
             subtitle={t(config.hasLabelKey)}
             thumbnailUrl={thumbnailUrl(reference.id)}
+            immichLink={{ kind: config.linkKind, id: reference.id }}
           />
         </div>
 
@@ -337,6 +338,7 @@ export function MoreOrLessGame({ coverUrl, hasRoundsView, daily = false }: GameC
               secondaryLabel={secondaryLabel}
               correct={revealResult?.correct ?? null}
               onGuess={handleGuess}
+              immichLink={{ kind: config.linkKind, id: candidate.id }}
             />
           </div>
         </div>

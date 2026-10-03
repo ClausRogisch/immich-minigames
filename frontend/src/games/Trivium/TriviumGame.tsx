@@ -140,7 +140,9 @@ export function TriviumGame({ coverUrl, hasRoundsView, daily = false }: GameComp
   // assetPhotoReady itself is declared up with the other reveal-sequence state (see its own
   // comment there) - only its src is computed here, alongside personThumbnailSrc.
   const assetPhotoSrc =
-    round?.media.kind === "asset" && round.media.asset_id ? assetThumbnailUrl(round.media.asset_id) : null
+    round?.media.kind === "asset" && round.media.asset_id
+      ? assetThumbnailUrl(round.media.asset_id)
+      : null
   // "Fully loaded" per round: no media to wait on, or whichever kind this round has has either
   // resolved or given up (a failed load still counts as loaded - the placeholder it falls back to
   // needs no further waiting), it just shouldn't hold up the round forever.
@@ -164,11 +166,14 @@ export function TriviumGame({ coverUrl, hasRoundsView, daily = false }: GameComp
   const altThumb3 = useQueuedThumbnail(alternativePhotoUrls[3] ?? null)
   const alternativesMediaLoaded =
     !hasPersonAlternatives ||
-    [altThumb0, altThumb1, altThumb2, altThumb3].every((thumb) => thumb.url !== null || thumb.failed)
+    [altThumb0, altThumb1, altThumb2, altThumb3].every(
+      (thumb) => thumb.url !== null || thumb.failed,
+    )
 
   const questionTextKey = round ? QUESTION_TEXT_KEYS[round.question_kind] : undefined
   const params = round?.params as PersonRef | undefined
-  const questionText = questionTextKey && params ? t(questionTextKey, { name: params.person_name }) : ""
+  const questionText =
+    questionTextKey && params ? t(questionTextKey, { name: params.person_name }) : ""
   const questionWords = questionText ? questionSegments(questionText) : []
 
   // Starts the word-by-word reveal once a fresh round has fully loaded - keyed on round?.id (not
@@ -222,7 +227,8 @@ export function TriviumGame({ coverUrl, hasRoundsView, daily = false }: GameComp
   // Cancels itself the instant phase leaves "guessing" (a real guess was submitted), which is what
   // keeps a manual click and this timeout from ever racing each other.
   useEffect(() => {
-    if (revealStage !== "alternatives" || phase !== "guessing" || alternativesShownAt === null) return
+    if (revealStage !== "alternatives" || phase !== "guessing" || alternativesShownAt === null)
+      return
     let raf = 0
     function tick() {
       const elapsed = performance.now() - (alternativesShownAt as number)
@@ -240,7 +246,8 @@ export function TriviumGame({ coverUrl, hasRoundsView, daily = false }: GameComp
   }, [revealStage, phase, alternativesShownAt, answerTimeMs])
 
   function handlePick(index: number) {
-    if (revealStage !== "alternatives" || phase !== "guessing" || alternativesShownAt === null) return
+    if (revealStage !== "alternatives" || phase !== "guessing" || alternativesShownAt === null)
+      return
     const elapsed = Math.min(answerTimeMs, Math.round(performance.now() - alternativesShownAt))
     setPendingIndex(index)
     submitGuess({ alternative: index, elapsed_ms: elapsed })
@@ -308,7 +315,9 @@ export function TriviumGame({ coverUrl, hasRoundsView, daily = false }: GameComp
     return <ErrorScreen onRetry={startGame} onBack={backToMenu} busy={busy} />
   }
 
-  const alternativeLabels = round.alternatives.map((alt) => formatAlternative(round.question_kind, alt, i18n.language))
+  const alternativeLabels = round.alternatives.map((alt) =>
+    formatAlternative(round.question_kind, alt, i18n.language),
+  )
   // hasPersonAlternatives/alternativePhotoUrls are computed further up (alongside the
   // useQueuedThumbnail calls that need them called unconditionally) - only photos_total_assets/
   // photos_together's alternatives have their own photo, so every other kind gets `undefined`
@@ -362,7 +371,13 @@ export function TriviumGame({ coverUrl, hasRoundsView, daily = false }: GameComp
               cropped along the way - the photo just letterboxes into whatever box it gets. */}
           {round.media.kind === "asset" && assetPhotoSrc && (
             <div className="relative mx-auto aspect-square min-h-0 w-full max-w-[min(70vw,18rem)] overflow-hidden rounded-2xl md:max-w-sm">
-              <AssetPhoto src={assetPhotoSrc} alt="" onReadyChange={setAssetPhotoReady} />
+              <AssetPhoto
+                src={assetPhotoSrc}
+                alt=""
+                onReadyChange={setAssetPhotoReady}
+                immichAssetId={revealed ? (round.media.asset_id ?? undefined) : undefined}
+                immichPillClassName="top-2 left-2"
+              />
             </div>
           )}
           {/* Every word is always rendered (reserving its final layout position) - only its
@@ -404,7 +419,8 @@ export function TriviumGame({ coverUrl, hasRoundsView, daily = false }: GameComp
         <div
           className="flex w-full flex-col items-center gap-4"
           style={{
-            transform: revealStage === "alternatives" ? "translateY(0)" : `translateY(${SLIDE_START_VH}vh)`,
+            transform:
+              revealStage === "alternatives" ? "translateY(0)" : `translateY(${SLIDE_START_VH}vh)`,
             transition: `transform ${SLIDE_TRANSITION_MS}ms ease-out`,
           }}
         >

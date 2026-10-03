@@ -1,6 +1,7 @@
 import type { MoreOrLessGuess } from "../../api/types/moreOrLess"
 import { Button } from "../shared/Button"
 import { StatCard } from "./StatCard"
+import type { StatCardImmichLink } from "./StatCard"
 import { ValueBadge } from "./ValueBadge"
 
 export type CandidatePhase = "guessing" | "counting" | "revealed"
@@ -22,6 +23,8 @@ interface CandidateCardProps {
   secondaryLabel: string
   correct: boolean | null
   onGuess: (guess: MoreOrLessGuess) => void
+  // Shown only once phase is "revealed" - linking earlier would show the value in Immich.
+  immichLink?: StatCardImmichLink
 }
 
 export function CandidateCard({
@@ -36,6 +39,7 @@ export function CandidateCard({
   secondaryLabel,
   correct,
   onGuess,
+  immichLink,
 }: CandidateCardProps) {
   // Only the value itself changes color on reveal - the card border/badge stay neutral.
   const valueColorClass =
@@ -43,7 +47,12 @@ export function CandidateCard({
   const secondaryGuess: MoreOrLessGuess = primaryGuess === "more" ? "less" : "more"
 
   return (
-    <StatCard thumbnailUrl={thumbnailUrl} name={name} subtitle={subtitle}>
+    <StatCard
+      thumbnailUrl={thumbnailUrl}
+      name={name}
+      subtitle={subtitle}
+      immichLink={phase === "revealed" ? immichLink : undefined}
+    >
       {phase === "guessing" ? (
         <div className="flex w-full gap-2.5">
           <Button

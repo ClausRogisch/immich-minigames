@@ -19,11 +19,15 @@ export function AssetCarousel({
   alt,
   index,
   onIndexChange,
+  immichLinks = false,
 }: {
   assetIds: string[]
   alt: string
   index: number
   onIndexChange: (index: number) => void
+  // Shows an ImmichPill on whichever photo is current - only once the round is revealed (see
+  // ImmichPill for why not before).
+  immichLinks?: boolean
 }) {
   const { t } = useTranslation()
 
@@ -48,7 +52,12 @@ export function AssetCarousel({
 
   return (
     <div className="relative h-full w-full">
-      <AssetPhoto key={assetIds[index]} src={assetThumbnailUrl(assetIds[index])} alt={alt} />
+      <AssetPhoto
+        key={assetIds[index]}
+        src={assetThumbnailUrl(assetIds[index])}
+        alt={alt}
+        immichAssetId={immichLinks ? assetIds[index] : undefined}
+      />
       {showArrows && (
         <>
           <button

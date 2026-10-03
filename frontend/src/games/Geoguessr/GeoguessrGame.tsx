@@ -137,6 +137,7 @@ export function GeoguessrGame({ coverUrl, hasRoundsView, daily = false }: GameCo
           alt={t("geoguessr.title")}
           index={assetIndex}
           onIndexChange={setAssetIndex}
+          immichLinks={revealed}
         />
       </div>
 

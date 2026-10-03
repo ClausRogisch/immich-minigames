@@ -2,6 +2,7 @@ import type { ReactNode } from "react"
 import { useEffect, useRef, useState } from "react"
 
 import { fitBox as computeFitBox } from "./fitBox"
+import { ImmichPill } from "./ImmichLink"
 import type { Size } from "./fitBox"
 import { Spinner } from "./Spinner"
 import { useElementSize } from "./useElementSize"
@@ -15,6 +16,10 @@ const placeholderStyle = {
   backgroundImage:
     "repeating-linear-gradient(135deg, var(--color-placeholder-a), var(--color-placeholder-a) 10px, var(--color-placeholder-b) 10px, var(--color-placeholder-b) 20px)",
 }
+
+// Top-center, one row below the fixed header pills (BackButton/RoundBadge/ScoreBadge sit at
+// top-[18px]/md:top-7) - the same offset StrikesBadge uses.
+const FULLSCREEN_PILL_POSITION = "top-[62px] left-1/2 -translate-x-1/2 md:top-[84px]"
 
 // Same "zoom anchored under the cursor/pinch midpoint" UX principle as
 // games/Dateguessr/TimelineRuler.tsx, just 2D (translate x/y + scale) instead of its 1D
@@ -46,10 +51,18 @@ export function AssetPhoto({
   alt,
   overlay,
   onReadyChange,
+  immichAssetId,
+  immichPillClassName = FULLSCREEN_PILL_POSITION,
 }: {
   src: string
   alt: string
   overlay?: ReactNode
+  // When set, shows an ImmichPill linking to this asset in Immich - callers only pass it once the
+  // round is answered (see ImmichPill). Positioned by immichPillClassName: the default suits a
+  // fullscreen photo (top-center, just under the header row's RoundBadge); a small in-card photo
+  // passes its own corner instead.
+  immichAssetId?: string
+  immichPillClassName?: string
   // Fired whenever "loaded or failed" changes - a caller that needs to know when this photo is
   // done loading (e.g. Trivium's location questions, which hold their countdown until every
   // photo on screen is ready) hooks into this instead of duplicating the load/error tracking
@@ -241,6 +254,10 @@ export function AssetPhoto({
         <div className="absolute inset-0 flex items-center justify-center">
           <Spinner className="h-8 w-8" />
         </div>
+      )}
+      {/* Also outside the transform, so it neither zooms nor pans with the photo. */}
+      {immichAssetId && (
+        <ImmichPill kind="asset" id={immichAssetId} className={immichPillClassName} />
       )}
     </div>
   )

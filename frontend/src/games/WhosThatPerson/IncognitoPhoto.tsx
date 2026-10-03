@@ -199,6 +199,8 @@ export function IncognitoPhoto({
     <AssetPhoto
       src={assetThumbnailUrl(assetId)}
       alt=""
+      // Only once every face is revealed - Immich would show the hidden people's names.
+      immichAssetId={phase === "revealed" ? assetId : undefined}
       overlay={
         <>
           {/* Sits above the raw photo but below the face boxes - blocks right-click "save/open

@@ -147,6 +147,7 @@ export function TimelineTrack({
                   badge={cards[gapIndex].badge}
                   actions={cards[gapIndex].actions}
                   onClick={onCardClick ? () => onCardClick(cards[gapIndex].assetId) : undefined}
+                  immichLink={onCardClick !== undefined}
                 />
               </div>
             )}

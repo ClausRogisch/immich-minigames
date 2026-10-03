@@ -130,6 +130,7 @@ export function DateguessrGame({ coverUrl, hasRoundsView, daily = false }: GameC
           alt={t("dateguessr.title")}
           index={assetIndex}
           onIndexChange={setAssetIndex}
+          immichLinks={revealed}
         />
       </div>
 
