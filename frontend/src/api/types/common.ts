@@ -88,6 +88,9 @@ export interface GameOut {
   // (and its own timeout auto-submit) stays in sync with the live admin-configured value instead
   // of a hardcoded guess. Null for every other game.
   answer_time_seconds?: number | null
+  // More or Less only: how many wrong guesses the game survives (admin-configured strike_count,
+  // 0 = the first wrong guess ends it). Null for every other game.
+  strikes_allowed?: number | null
   // Set only for a daily-challenge game, null for every normal game. Lets the
   // frontend recognize a resumed/loaded game as a daily one after a page reload (see
   // games/shared/useRoundGame.ts).

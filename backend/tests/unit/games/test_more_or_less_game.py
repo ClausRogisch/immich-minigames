@@ -192,3 +192,64 @@ class TestMoreOrLessPersonBirthDateMode:
 
         assert result.score_delta == 1
         assert not game.finished
+
+
+class TestMoreOrLessStrikes:
+    """strike_count (games/more_or_less/settings.py) - a pool of distinct values, so no round is
+    ever a tie and _wrong_guess() always really loses."""
+
+    def _game(self, strike_count: int | None) -> MoreOrLessGame:
+        settings = {"strike_count": strike_count} if strike_count is not None else None
+        return MoreOrLessGame.start(
+            id=uuid4(), mode=MODE_ALBUM_ASSETS, provider=_SmallPoolProvider(size=5), settings=settings
+        )
+
+    def test_default_still_ends_on_the_first_wrong_guess(self):
+        game = self._game(None)
+
+        game.play_round(_wrong_guess(game.current_round))
+
+        assert game.finished
+        assert game.strikes_allowed == 0
+
+    def test_wrong_guesses_within_the_allowance_chain_on(self):
+        game = self._game(2)
+
+        for expected_used in (1, 2):
+            previous = game.current_round
+            result = game.play_round(_wrong_guess(previous))
+            assert result.score_delta == 0
+            assert not game.finished
+            assert game.strikes_used == expected_used
+            # Chains exactly like a correct guess: the revealed candidate is the next reference.
+            assert game.current_round.reference == previous.candidate
+
+    def test_the_wrong_guess_past_the_allowance_ends_the_game(self):
+        game = self._game(2)
+        game.play_round(_correct_guess(game.current_round))
+        game.play_round(_wrong_guess(game.current_round))
+        game.play_round(_correct_guess(game.current_round))
+        game.play_round(_wrong_guess(game.current_round))
+        assert not game.finished
+
+        game.play_round(_wrong_guess(game.current_round))
+
+        assert game.finished
+        assert game.score == 2  # wrong guesses never cost points, they only use up strikes
+
+    def test_strikes_survive_a_reload_from_persisted_rounds(self):
+        game = self._game(1)
+        game.play_round(_wrong_guess(game.current_round))
+        reloaded = MoreOrLessGame(
+            id=game.id,
+            mode=game.mode,
+            rounds=game.rounds,
+            provider=_SmallPoolProvider(size=5),
+            score=game.score,
+            finished=game.finished,
+            settings={"strike_count": 1},
+        )
+
+        reloaded.play_round(_wrong_guess(reloaded.current_round))
+
+        assert reloaded.finished

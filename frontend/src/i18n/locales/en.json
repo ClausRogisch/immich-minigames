@@ -129,6 +129,7 @@
   },
   "moreOrLess": {
     "title": "More or Less",
+    "strikes": "Strikes",
     "modes": {
       "personAssets": "Person assets",
       "albumAssets": "Album assets",
@@ -421,7 +422,8 @@
         "max_points": "Max points per round",
         "min_points": "Min points per round",
         "answer_time_seconds": "Answer time limit (seconds)",
-        "max_rounds": "Max rounds (0 = unlimited)"
+        "max_rounds": "Max rounds (0 = unlimited)",
+        "strike_count": "Allowed mistakes (strikes)"
       },
       "settingsHelp": {
         "total_rounds": "How many rounds one game has.",
@@ -445,7 +447,8 @@
         "max_points": "Points awarded for answering instantly. Higher means higher scores overall.",
         "min_points": "Points awarded for a correct answer given right at the time limit, instead of 0. Higher rewards a slow-but-correct answer more.",
         "answer_time_seconds": "Time limit to answer a question, in seconds. Higher gives more time, easier.",
-        "max_rounds": "Cap on how many rounds one run can reach (0 = unlimited)."
+        "max_rounds": "Cap on how many rounds one run can reach (0 = unlimited).",
+        "strike_count": "How many wrong guesses a game survives before it ends (0 = the first wrong guess ends it). Higher is easier."
       }
     },
     "daily": {

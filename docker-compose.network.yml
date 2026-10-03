@@ -5,4 +5,6 @@ services:
     networks: [default, immich]
 networks:
   immich:
+    # The Immich stack's own network - Compose looks external networks up by this exact name.
+    name: immich_default
     external: true

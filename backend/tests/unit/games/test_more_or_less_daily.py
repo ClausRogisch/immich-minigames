@@ -5,7 +5,7 @@ content, so none of this needs the immich_service/db_session fixtures."""
 from uuid import UUID, uuid4
 
 from games.more_or_less import MODE_PERSON_ASSETS, CandidateProvider, EntitySnapshot, MoreOrLessGame
-from games.more_or_less.daily import ScriptedCandidateProvider, _BufferedProvider
+from games.more_or_less.daily import ScriptedCandidateProvider, _BufferedProvider, game_kwargs
 
 
 def _entity(value: int) -> EntitySnapshot:
@@ -115,3 +115,27 @@ class TestScriptedCandidateProvider:
         chain = [_entity(1), _entity(2)]
         assert ScriptedCandidateProvider(chain, next_index=1).any_exist() is True
         assert ScriptedCandidateProvider(chain, next_index=2).any_exist() is False
+
+
+class TestDailyStrikes:
+    def test_a_daily_game_plays_on_through_its_strikes_and_ends_at_the_chain_end(self):
+        chain = [_entity(v) for v in (5, 1, 9, 3, 7)]  # 4 rounds, no ties
+        spec = {"chain": [e.to_dict() for e in chain]}
+        kwargs = game_kwargs(
+            MODE_PERSON_ASSETS, spec, {"strike_count": 1}, rounds_played=0, immich_service=None, ml_service=None
+        )
+        game = MoreOrLessGame.start(id=uuid4(), **kwargs)
+
+        def wrong(r):
+            return "less" if r.candidate.value > r.reference.value else "more"
+
+        def right(r):
+            return "more" if r.candidate.value > r.reference.value else "less"
+
+        game.play_round(wrong(game.current_round))  # strike 1 of 1 - keeps going
+        assert not game.finished
+        for _ in range(3):
+            game.play_round(right(game.current_round))
+
+        assert game.finished
+        assert game.score == 3

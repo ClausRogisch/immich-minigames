@@ -129,6 +129,7 @@
   },
   "moreOrLess": {
     "title": "Plus ou Moins",
+    "strikes": "Erreurs",
     "modes": {
       "personAssets": "Photos de personnes",
       "albumAssets": "Photos d'albums",
@@ -421,7 +422,8 @@
         "max_points": "Score maximum par manche",
         "min_points": "Score minimum par manche",
         "answer_time_seconds": "Temps limite pour répondre (secondes)",
-        "max_rounds": "Manches maximum (0 = illimité)"
+        "max_rounds": "Manches maximum (0 = illimité)",
+        "strike_count": "Erreurs autorisées"
       },
       "settingsHelp": {
         "total_rounds": "Combien de manches dure une partie.",
@@ -445,7 +447,8 @@
         "max_points": "Points attribués pour une réponse instantanée. Plus c'est élevé, plus les scores globaux sont élevés.",
         "min_points": "Points attribués pour une bonne réponse donnée juste à la limite de temps, au lieu de 0. Plus c'est élevé, plus une réponse lente mais correcte est récompensée.",
         "answer_time_seconds": "Temps limite pour répondre à une question, en secondes. Plus c'est élevé, plus il y a de temps, plus c'est facile.",
-        "max_rounds": "Limite du nombre de manches qu'une partie peut atteindre (0 = illimité)."
+        "max_rounds": "Limite du nombre de manches qu'une partie peut atteindre (0 = illimité).",
+        "strike_count": "Combien de mauvaises réponses une partie supporte avant de se terminer (0 = la première mauvaise réponse la termine). Plus haut est plus facile."
       }
     },
     "daily": {

@@ -43,8 +43,8 @@ class TestGetSettings:
         assert settings["decay_km"] == 1500.0
         assert settings["total_rounds"] == 5
 
-    def test_game_type_with_no_specs_returns_empty_dict(self, game_settings_service):
-        assert game_settings_service.get_settings(MORE_OR_LESS_TYPE, MODE_PERSON_ASSETS) == {}
+    def test_unconfigured_mode_returns_its_defaults(self, game_settings_service):
+        assert game_settings_service.get_settings(MORE_OR_LESS_TYPE, MODE_PERSON_ASSETS) == {"strike_count": 0}
 
     def test_unknown_game_type_returns_empty_dict(self, game_settings_service):
         assert game_settings_service.get_settings("not-a-real-game", MODE_DISTANCE_BETWEEN_GUESS) == {}
@@ -153,5 +153,5 @@ class TestSettingsAreIndependentPerMode:
         db_session.add(GameSettingsModel(game_type=MORE_OR_LESS_TYPE, mode=MODE_ALBUM_ASSETS, values={"probe": 2.0}))
         db_session.commit()
 
-        assert game_settings_service.get_settings(MORE_OR_LESS_TYPE, MODE_PERSON_ASSETS) == {"probe": 1.0}
-        assert game_settings_service.get_settings(MORE_OR_LESS_TYPE, MODE_ALBUM_ASSETS) == {"probe": 2.0}
+        assert game_settings_service.get_settings(MORE_OR_LESS_TYPE, MODE_PERSON_ASSETS)["probe"] == 1.0
+        assert game_settings_service.get_settings(MORE_OR_LESS_TYPE, MODE_ALBUM_ASSETS)["probe"] == 2.0

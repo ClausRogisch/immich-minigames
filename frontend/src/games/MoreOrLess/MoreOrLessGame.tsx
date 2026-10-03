@@ -17,6 +17,7 @@ import type { CandidatePhase } from "./CandidateCard"
 import { CandidateCard } from "./CandidateCard"
 import { MODE_CONFIG } from "./modeConfig"
 import { PersonCard } from "./PersonCard"
+import { StrikesBadge } from "./StrikesBadge"
 
 const GAME_TYPE = GameType.MoreOrLess
 
@@ -63,6 +64,9 @@ export function MoreOrLessGame({ coverUrl, hasRoundsView, daily = false }: GameC
     correct: boolean | null
     nextRound: MoreOrLessRoundOut | null
   } | null>(null)
+  // Wrong guesses so far - counted from the game's rounds on start/resume, then bumped per wrong
+  // reveal. Only shown when the game allows strikes at all (game.strikes_allowed > 0).
+  const [strikesUsed, setStrikesUsed] = useState(0)
   const [sliding, setSliding] = useState(false)
   const [transitionEnabled, setTransitionEnabled] = useState(true)
   const [slideOffset, setSlideOffset] = useState({ x: 0, y: 0 })
@@ -90,6 +94,7 @@ export function MoreOrLessGame({ coverUrl, hasRoundsView, daily = false }: GameC
     setCountTarget(null)
     setRevealValue(null)
     setRevealResult(null)
+    setStrikesUsed(g.rounds.filter((r) => isMoreOrLessRound(r) && r.correct === false).length)
     setSliding(false)
     return true
   }
@@ -122,7 +127,9 @@ export function MoreOrLessGame({ coverUrl, hasRoundsView, daily = false }: GameC
   useEffect(() => {
     if (candidatePhase !== "revealed" || !revealResult) return
     const timer = setTimeout(() => {
-      if (revealResult.correct && revealResult.nextRound) {
+      // A next round means the game goes on - after a correct guess, or a wrong one the strike
+      // allowance still covers (the backend decides; no next round means game over).
+      if (revealResult.nextRound) {
         const el = slidingCardRef.current
         const isDesktop = window.matchMedia(MOBILE_BREAKPOINT_QUERY).matches
         if (el) {
@@ -173,6 +180,7 @@ export function MoreOrLessGame({ coverUrl, hasRoundsView, daily = false }: GameC
           markRecordBeaten(result.score)
         }
         setRevealResult({ correct: result.correct, nextRound: result.next_round })
+        if (result.correct === false) setStrikesUsed((n) => n + 1)
         if (config.valueKind === "count") {
           setCountTarget(result.answered_round.candidate_value as number)
         } else {
@@ -268,6 +276,11 @@ export function MoreOrLessGame({ coverUrl, hasRoundsView, daily = false }: GameC
           pushing it down, and free up that vertical space for the cards (no-scroll budget). */}
       <GuardedBackButton onExit={backToIdle} />
       <ScoreBadge label={t("common.score")} score={game.score} />
+      <StrikesBadge
+        label={t("moreOrLess.strikes")}
+        used={strikesUsed}
+        allowed={game.strikes_allowed ?? 0}
+      />
 
       <div className="flex min-h-0 flex-1 flex-col gap-4 md:flex-row md:items-center md:justify-center md:gap-10">
         <div className="flex min-h-0 w-full flex-1 flex-col md:w-[300px] md:flex-none">

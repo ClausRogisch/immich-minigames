@@ -129,6 +129,7 @@
   },
   "moreOrLess": {
     "title": "Mehr oder Weniger",
+    "strikes": "Fehler",
     "modes": {
       "personAssets": "Fotos von Personen",
       "albumAssets": "Fotos von Alben",
@@ -421,7 +422,8 @@
         "max_points": "Maximale Punkte pro Runde",
         "min_points": "Minimale Punkte pro Runde",
         "answer_time_seconds": "Zeitlimit zum Antworten (Sekunden)",
-        "max_rounds": "Max Runden (0 = unbegrenzt)"
+        "max_rounds": "Max Runden (0 = unbegrenzt)",
+        "strike_count": "Erlaubte Fehler"
       },
       "settingsHelp": {
         "total_rounds": "Wie viele Runden ein Spiel hat.",
@@ -445,7 +447,8 @@
         "max_points": "Punkte für eine sofortige richtige Antwort. Höher bedeutet insgesamt höhere Punktzahlen.",
         "min_points": "Punkte für eine richtige Antwort genau am Zeitlimit, statt 0. Höher belohnt eine langsame, aber richtige Antwort stärker.",
         "answer_time_seconds": "Zeitlimit zum Beantworten einer Frage, in Sekunden. Höher gibt mehr Zeit, leichter.",
-        "max_rounds": "Obergrenze, wie viele Runden ein Durchlauf erreichen kann (0 = unbegrenzt)."
+        "max_rounds": "Obergrenze, wie viele Runden ein Durchlauf erreichen kann (0 = unbegrenzt).",
+        "strike_count": "Wie viele falsche Antworten ein Spiel übersteht, bevor es endet (0 = die erste falsche Antwort beendet es). Höher ist leichter."
       }
     },
     "daily": {

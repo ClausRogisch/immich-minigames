@@ -129,6 +129,7 @@
   },
   "moreOrLess": {
     "title": "More or Less",
+    "strikes": "Fallos",
     "modes": {
       "personAssets": "Fotos de personas",
       "albumAssets": "Fotos de álbumes",
@@ -421,7 +422,8 @@
         "max_points": "Puntaje máximo por ronda",
         "min_points": "Puntaje mínimo por ronda",
         "answer_time_seconds": "Tiempo límite para responder (segundos)",
-        "max_rounds": "Rondas máximas (0 = sin límite)"
+        "max_rounds": "Rondas máximas (0 = sin límite)",
+        "strike_count": "Fallos permitidos"
       },
       "settingsHelp": {
         "total_rounds": "Cuántas rondas dura una partida.",
@@ -445,7 +447,8 @@
         "max_points": "Puntos por responder al instante. Más alto significa puntajes más altos en general.",
         "min_points": "Puntos otorgados por acertar justo al límite de tiempo, en vez de 0. Más alto premia más un acierto lento.",
         "answer_time_seconds": "Tiempo límite para responder una pregunta, en segundos. Más alto da más tiempo, más fácil.",
-        "max_rounds": "Tope de cuántas rondas puede alcanzar una partida (0 = sin límite)."
+        "max_rounds": "Tope de cuántas rondas puede alcanzar una partida (0 = sin límite).",
+        "strike_count": "Cuántas respuestas incorrectas aguanta una partida antes de terminar (0 = la primera respuesta incorrecta la termina). Más alto es más fácil."
       }
     },
     "daily": {

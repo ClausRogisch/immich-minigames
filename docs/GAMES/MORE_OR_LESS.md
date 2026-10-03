@@ -14,7 +14,12 @@ without their count. The player must guess whether B has **more** or **fewer** t
 
 - **Correct guess:** B becomes the new reference (with their count now visible), a random candidate C
   is chosen, and the question repeats.
-- **Wrong guess:** the game ends.
+- **Wrong guess:** the game ends - unless the admin set a **strike count** (`strike_count`, admin
+  panel → Games → More or Less, per mode; default 0). The game then survives that many wrong guesses:
+  a wrong guess within the allowance scores nothing but chains on like a correct one (B, now
+  revealed, becomes the new reference), and the wrong guess *after* the last strike ends the game.
+  The remaining strikes are shown next to the score. Daily challenges have their own copy of the
+  setting (admin panel → Daily), frozen per day like the other daily settings.
 - **Tie** (A and B have exactly the same count): regardless of what the player answered, it's treated
   as a correct guess and doesn't end the game. Ties are avoided when possible when picking candidates
   (see `_pick_non_tied_candidate` in `more_or_less.py`), but if one does occur (e.g., many people with
@@ -26,8 +31,9 @@ without their count. The player must guess whether B has **more** or **fewer** t
 
 ## Scoring & Game End
 
-- Each correct (or tied) round is worth 1 point; the game's total score is the count of consecutive
-  correct guesses (the streak).
+- Each correct (or tied) round is worth 1 point; the game's total score is the count of correct
+  guesses (with the default strike count of 0, that's the streak of consecutive correct guesses).
+  Wrong guesses never subtract points.
 - `has_next_round()`: if the guess was correct (or tied), a new round is created; if it was wrong,
   the game ends. The game doesn't end by running out of new candidates—see "infinite game" note above.
 

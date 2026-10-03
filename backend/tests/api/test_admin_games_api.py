@@ -71,18 +71,16 @@ class TestListGameSettings:
 
         assert response.status_code == 403
 
-    def test_admin_lists_every_game_including_ones_with_no_settings(self, client, db_session):
+    def test_admin_lists_every_game_mode_as_its_own_entry(self, client, db_session):
         _register_as_admin(client, db_session)
 
         response = client.get("/api/v1/admin/games/settings")
 
         assert response.status_code == 200
         by_mode = {(g["game_type"], g["mode"]): g for g in response.json()}
-        # MoreOrLess's two modes are separate entries, each still empty.
-        assert (MORE_OR_LESS_TYPE, MODE_PERSON_ASSETS) in by_mode
-        assert (MORE_OR_LESS_TYPE, MODE_ALBUM_ASSETS) in by_mode
-        assert by_mode[(MORE_OR_LESS_TYPE, MODE_PERSON_ASSETS)]["settings"] == []
-        assert by_mode[(MORE_OR_LESS_TYPE, MODE_ALBUM_ASSETS)]["settings"] == []
+        # MoreOrLess's modes are separate entries, each with its own strike_count.
+        for mode in (MODE_PERSON_ASSETS, MODE_ALBUM_ASSETS):
+            assert [s["key"] for s in by_mode[(MORE_OR_LESS_TYPE, mode)]["settings"]] == ["strike_count"]
         geo_keys = {s["key"] for s in by_mode[(GEOGUESSR_TYPE, MODE_DISTANCE_BETWEEN_GUESS)]["settings"]}
         assert "decay_km" in geo_keys
 

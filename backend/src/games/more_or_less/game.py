@@ -1,8 +1,9 @@
 """
 Based on the More Or Less game. A reference entity and its value are shown. A second candidate is
-shown without its value - the player guesses whether it has "more" or "less" than the reference. A
-correct guess chains into a new round (the candidate becomes the new reference); a wrong guess ends
-the game. See docs/GAMES/MORE_OR_LESS.md.
+shown without its value - the player guesses whether it has "more" or "less" than the reference.
+Every answered round chains into a new one (the candidate becomes the new reference); the game ends
+on the wrong guess that exceeds the admin-configured `strike_count` (default 0: the first wrong
+guess ends it). See docs/GAMES/MORE_OR_LESS.md.
 
 The game engine here is entity-agnostic: a round compares two "countable entities" (id, name, a
 comparable `value`), and everything - chaining, streak scoring, tie handling, the recent-repeat
@@ -90,11 +91,21 @@ class MoreOrLessGame(BaseGame):
                     return frozenset(recent)
         return frozenset(recent)
 
+    @property
+    def strikes_allowed(self) -> int:
+        """How many wrong guesses this game survives (settings.py's STRIKE_COUNT_SPEC)."""
+        return int(self._settings.get("strike_count", 0))
+
+    @property
+    def strikes_used(self) -> int:
+        return sum(1 for round_ in self.rounds if round_.score_delta == 0)
+
     def has_next_round(self) -> bool:
-        # The game is infinite: it continues on any correct/tied guess as long as the pool has at
-        # least one entity at all (create_next_round falls back to allowing repeats when the recent
-        # window covers the whole pool), and only ends on a wrong guess.
-        if self.current_round.score_delta != 1:
+        # The game is infinite: it continues as long as the player hasn't used up their strikes and
+        # the pool has at least one entity at all (create_next_round falls back to allowing repeats
+        # when the recent window covers the whole pool). A wrong guess within the allowance still
+        # chains on like a correct one - the candidate becomes the next reference either way.
+        if self.strikes_used > self.strikes_allowed:
             return False
         return self._provider.any_exist()
 

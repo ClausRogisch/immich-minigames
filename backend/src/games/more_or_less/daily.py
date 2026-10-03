@@ -58,8 +58,8 @@ class ScriptedCandidateProvider(CandidateProvider):
     already built repeat-free (or intentionally allowing a repeat, mirroring the real game's own
     small-pool fallback - see games/more_or_less/game.py's create_next_round) at generation time,
     so re-filtering it here would be redundant. Once the chain is exhausted, `any_exist()` turns
-    False, which makes MoreOrLessGame.has_next_round() end the game as "perfect" rather than as a
-    loss."""
+    False, which makes MoreOrLessGame.has_next_round() end the game as completed (perfect, unless
+    some of the day's strikes were used along the way) rather than as a loss."""
 
     def __init__(self, chain: list[EntitySnapshot], next_index: int) -> None:
         self._chain = chain

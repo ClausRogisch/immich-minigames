@@ -112,6 +112,12 @@ class BaseGame(ABC):
         return None
 
     @property
+    def strikes_allowed(self) -> int | None:
+        """How many wrong guesses MoreOrLess survives before ending - None for every other game.
+        Same rationale as total_rounds above: the frontend shows the remaining strikes."""
+        return None
+
+    @property
     def answer_time_seconds(self) -> int | None:
         """Live per-round answer window for Trivium - None for every other game. Same rationale as
         total_rounds above: the frontend needs this to run its own countdown/timeout in sync with

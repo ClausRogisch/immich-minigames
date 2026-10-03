@@ -176,6 +176,9 @@ class GameOut(BaseModel):
     # Same rationale again - Trivium's per-round answer window, so the frontend's countdown timer
     # (and its own timeout auto-submit) stays in sync with whatever an admin has it configured to.
     answer_time_seconds: int | None = None
+    # MoreOrLess's admin-configured strike allowance (BaseGame.strikes_allowed) - the frontend shows
+    # how many wrong guesses are left. Null for every other game.
+    strikes_allowed: int | None = None
     # Set only for a daily-challenge game (see games/base.py's BaseGame.
     # daily_challenge_date), null for every normal game. Lets the frontend tell a resumed/loaded
     # game is a daily one on a fresh page load (no separate "Nuevo juego" affordance, no re-offer
@@ -199,6 +202,7 @@ class GameOut(BaseModel):
             total_people=game.total_people,
             face_box_growth=game.face_box_growth,
             answer_time_seconds=game.answer_time_seconds,
+            strikes_allowed=game.strikes_allowed,
             daily_challenge_date=game.daily_challenge_date,
         )
 
