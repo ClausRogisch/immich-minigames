@@ -21,6 +21,8 @@ from services.errors import (
     DailyNotEnabledError,
     GameNotFoundError,
     GameOwnershipError,
+    ImmichKeyRejectedError,
+    ImmichNotLinkedError,
     NotEnoughContentError,
     RoundNotPendingError,
     UnsupportedGameError,
@@ -58,6 +60,8 @@ EXCEPTION_STATUS: dict[type[Exception], int] = {
     PushNotConfiguredError: 503,
     NoPushSubscriptionsError: 404,
     PushSendFailedError: 502,
+    ImmichNotLinkedError: 409,
+    ImmichKeyRejectedError: 400,
 }
 
 

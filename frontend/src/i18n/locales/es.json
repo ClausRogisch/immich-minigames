@@ -335,6 +335,21 @@
         "save": "Cambiar contraseña",
         "saved": "Contraseña cambiada"
       },
+      "immich": {
+        "title": "Conexión con Immich",
+        "label": "Cuenta de Immich",
+        "notConnected": "Sin conectar",
+        "intro": "Los juegos usan las fotos, personas y álbumes de tu propia cuenta de Immich. Conéctala con una clave API para empezar a jugar.",
+        "connectedAs": "Conectado como {{name}} ({{email}}). Los juegos usan las fotos, personas y álbumes que ve esta cuenta de Immich.",
+        "apiKey": "Clave API de Immich",
+        "howTo": "Créala en Immich en Configuración de la cuenta → Claves API, con estos permisos:",
+        "howToLinked": "Créala en <link>Immich → Configuración de la cuenta → Claves API</link>, con estos permisos:",
+        "save": "Conectar",
+        "replace": "Reemplazar clave",
+        "saved": "Cuenta de Immich conectada",
+        "removed": "Cuenta de Immich desconectada",
+        "disconnect": "Desconectar"
+      },
       "skin": {
         "label": "Piel",
         "none": "Ninguna",

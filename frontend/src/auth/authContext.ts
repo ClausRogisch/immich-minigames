@@ -25,6 +25,9 @@ export interface AuthContextValue {
   // Change-password page (ChangePasswordPage.tsx), same refresh-from-response
   // pattern as updateProfile/updateSkin above.
   changePassword: (body: ChangePasswordIn) => Promise<User>
+  // Immich connection page (ImmichConnectionPage.tsx), same refresh-from-response pattern.
+  linkImmich: (apiKey: string) => Promise<User>
+  unlinkImmich: () => Promise<User>
 }
 
 export const AuthContext = createContext<AuthContextValue | null>(null)

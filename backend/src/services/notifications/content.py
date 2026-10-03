@@ -1,7 +1,7 @@
 """What's notifiable today, for the 12:00 birthdays and 14:00 album-anniversary notifications -
-installation-wide facts (unlike the 10:00/21:00 daily reminders, which are per-user), computed
-once per tick and fanned out to every subscribed user with the matching preference on (see
-schedule.py). Both queries are read straight off Immich (services/immich/), the exclusion of
+facts about one player's own Immich library (the ImmichService passed in is scoped to them, see
+services/immich/_scope.py), computed per subscribed player with the matching preference on (see
+runner.py's _process_per_library). Both queries are read straight off Immich (services/immich/), the exclusion of
 open, relevant reports is this module's own job.
 """
 

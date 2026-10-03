@@ -7,9 +7,10 @@ from sqlalchemy import Date, cast, func, select
 from sqlalchemy.engine import Engine
 
 from domain.album import Album
-from persistence.immich_tables import album, album_asset, asset, asset_face, person
+from persistence.immich_tables import album, album_asset, asset, asset_face
 
 from ._rows import row_to_album
+from ._scope import person_rows, visible_album
 from ._text import word_prefix_conditions
 
 # The standard "this asset is real and showable" predicate (docs/ARCHITECTURE/IMMICH.md's
@@ -21,6 +22,7 @@ _ASSET_ELIGIBLE = (asset.c.status == "active") & (asset.c.visibility == "timelin
 
 def get_albums(
     engine: Engine,
+    user_id: UUID | None,
     *,
     ids: frozenset[UUID] | None = None,
     name_query: str | None = None,
@@ -34,14 +36,15 @@ def get_albums(
     mode (see games/more_or_less/album_assets.py) and Albumdle (games/immichdle/albumdle.py),
     mirroring get_persons' shape (ids/name_query/min_asset_count/randomize/asset_count_weight/
     limit/exclude_ids). An album with no assets still comes back (count 0) unless
-    min_asset_count filters it out."""
+    min_asset_count filters it out. Only albums this user is a member of (see ._scope) - every
+    asset in such an album is viewable to them in Immich, so the count isn't asset-scoped."""
     asset_count_agg = func.count(album_asset.c.assetId)
     asset_count = asset_count_agg.label("asset_count")
 
     stmt = (
         select(album.c.id, album.c.albumName, album.c.albumThumbnailAssetId, asset_count)
         .select_from(album.outerjoin(album_asset, album_asset.c.albumId == album.c.id))
-        .where(album.c.deletedAt.is_(None))
+        .where(album.c.deletedAt.is_(None), visible_album(user_id))
         .group_by(album.c.id, album.c.albumName, album.c.albumThumbnailAssetId)
     )
 
@@ -72,7 +75,7 @@ def get_albums(
     return [row_to_album(row) for row in rows]
 
 
-def search_albums(engine: Engine, query: str, *, offset: int = 0, limit: int = 3) -> list[Album]:
+def search_albums(engine: Engine, user_id: UUID | None, query: str, *, offset: int = 0, limit: int = 3) -> list[Album]:
     """Albums matching every whitespace-separated token in `query` against a *word* in the album
     name - see ._text.word_prefix_conditions for the actual matching rule, applied here to
     `album.albumName` instead of `person.name`. Powers Albumdle's guess-input autocomplete."""
@@ -85,7 +88,7 @@ def search_albums(engine: Engine, query: str, *, offset: int = 0, limit: int = 3
     stmt = (
         select(album.c.id, album.c.albumName, album.c.albumThumbnailAssetId, asset_count)
         .select_from(album.outerjoin(album_asset, album_asset.c.albumId == album.c.id))
-        .where(album.c.deletedAt.is_(None), *token_conditions)
+        .where(album.c.deletedAt.is_(None), visible_album(user_id), *token_conditions)
         .group_by(album.c.id, album.c.albumName, album.c.albumThumbnailAssetId)
         .order_by(album.c.albumName)
         .offset(offset)
@@ -138,7 +141,7 @@ def get_album_last_asset_date(engine: Engine, album_id: UUID) -> date | None:
         return conn.execute(stmt).scalar()
 
 
-def get_albums_starting_on(engine: Engine, month: int, day: int) -> list[tuple[UUID, str, date]]:
+def get_albums_starting_on(engine: Engine, user_id: UUID | None, month: int, day: int) -> list[tuple[UUID, str, date]]:
     """Every album whose earliest eligible asset's local calendar day falls on this month/day, any
     year - one grouped query instead of a get_album_first_asset_date call per album. Web Push's
     daily "on this day" album-anniversary notification (services/notifications/content.py). Years-
@@ -152,7 +155,7 @@ def get_albums_starting_on(engine: Engine, month: int, day: int) -> list[tuple[U
                 asset, asset.c.id == album_asset.c.assetId
             )
         )
-        .where(album.c.deletedAt.is_(None), _ASSET_ELIGIBLE)
+        .where(album.c.deletedAt.is_(None), visible_album(user_id), _ASSET_ELIGIBLE)
         .group_by(album.c.id, album.c.albumName)
         .having(func.extract("month", first_date) == month, func.extract("day", first_date) == day)
     )
@@ -161,29 +164,30 @@ def get_albums_starting_on(engine: Engine, month: int, day: int) -> list[tuple[U
     return [(row.id, row.albumName, row.first_asset_date) for row in rows]
 
 
-def get_album_named_face_counts(engine: Engine, album_id: UUID) -> list[tuple[UUID, str, int]]:
+def get_album_named_face_counts(engine: Engine, user_id: UUID | None, album_id: UUID) -> list[tuple[UUID, str, int]]:
     """(person_id, name, distinct_asset_count) for every named person appearing (via an eligible,
     visible, non-deleted face tag) in this album's eligible assets, ordered by count desc - the
     data source for both Albumdle's dominant_face clue (the tie-break itself is a game rule, done
     in games/immichdle/albumdle.py, not here) and, via len(), its unique_face_count clue."""
+    p = person_rows(user_id)
     distinct_asset_count = func.count(func.distinct(asset_face.c.assetId)).label("distinct_asset_count")
     stmt = (
-        select(person.c.id, person.c.name, distinct_asset_count)
+        select(p.c.personGroupId.label("id"), p.c.name, distinct_asset_count)
         .select_from(
             album_asset.join(asset, asset.c.id == album_asset.c.assetId)
             .join(asset_face, asset_face.c.assetId == asset.c.id)
-            .join(person, person.c.id == asset_face.c.personId)
+            .join(p, p.c.personGroupId == asset_face.c.personGroupId)
         )
         .where(
             album_asset.c.albumId == album_id,
             _ASSET_ELIGIBLE,
             asset_face.c.deletedAt.is_(None),
             asset_face.c.isVisible.is_(True),
-            person.c.isHidden.is_(False),
-            person.c.thumbnailPath != "",
-            person.c.name != "",
+            p.c.isHidden.is_(False),
+            p.c.thumbnailPath != "",
+            p.c.name != "",
         )
-        .group_by(person.c.id, person.c.name)
+        .group_by(p.c.personGroupId, p.c.name)
         .order_by(distinct_asset_count.desc())
     )
     with engine.connect() as conn:
@@ -197,19 +201,21 @@ def get_persons_present_in_album(engine: Engine, album_id: UUID, person_ids: fro
     if not person_ids:
         return frozenset()
     stmt = (
-        select(asset_face.c.personId)
+        select(asset_face.c.personGroupId)
         .distinct()
-        .select_from(album_asset.join(asset, asset.c.id == album_asset.c.assetId).join(
-            asset_face, asset_face.c.assetId == asset.c.id
-        ))
+        .select_from(
+            album_asset.join(asset, asset.c.id == album_asset.c.assetId).join(
+                asset_face, asset_face.c.assetId == asset.c.id
+            )
+        )
         .where(
             album_asset.c.albumId == album_id,
             _ASSET_ELIGIBLE,
             asset_face.c.deletedAt.is_(None),
             asset_face.c.isVisible.is_(True),
-            asset_face.c.personId.in_(person_ids),
+            asset_face.c.personGroupId.in_(person_ids),
         )
     )
     with engine.connect() as conn:
         rows = conn.execute(stmt).all()
-    return frozenset(row.personId for row in rows)
+    return frozenset(row.personGroupId for row in rows)

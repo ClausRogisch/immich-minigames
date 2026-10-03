@@ -11,12 +11,11 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from api.auth_api import get_auth_service, get_current_user
 from api.auth_schemas import UpdateProfileIn, UpdateSkinIn, UserOut
-from api.deps import get_immich_service, get_invite_service
+from api.deps import get_invite_service, immich_service_for
 from api.dto.admin import CreateInviteOut
 from audit import audit
 from persistence.users import UserModel
 from services.auth_service import AuthService
-from services.immich import ImmichService
 from services.invite_service import InviteService
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -83,11 +82,12 @@ def update_user_skin(
     body: UpdateSkinIn,
     _admin: Annotated[UserModel, Depends(get_current_admin_user)],
     auth_service: Annotated[AuthService, Depends(get_auth_service)],
-    immich_service: Annotated[ImmichService, Depends(get_immich_service)],
 ) -> UserOut:
     target = _get_target_user(auth_service, user_id)
     if body.person_id is not None:
-        found = immich_service.get_persons(ids=frozenset({body.person_id}), limit=1)
+        # Validated against the *target's* library, not the admin's - a skin is one of the target's
+        # own people (409 via ImmichNotLinkedError if they haven't linked an Immich account yet).
+        found = immich_service_for(target).get_persons(ids=frozenset({body.person_id}), limit=1)
         if not found:
             raise HTTPException(status_code=404, detail=f"person {body.person_id} not found")
     updated = auth_service.set_skin(target, body.person_id)

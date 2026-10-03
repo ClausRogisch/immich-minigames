@@ -39,6 +39,7 @@ from api.rate_limit import GAME_ACTION_LIMIT, SEARCH_LIMIT, THUMBNAIL_LIMIT, lim
 from api.reports_api import router as reports_router
 from config import Settings, get_settings
 from persistence.users import UserModel
+from services.errors import ImmichNotLinkedError
 from services.games_service import GamesService
 from services.immich import ImmichService
 from services.scores_service import ScoresService
@@ -182,7 +183,7 @@ def play_round(
     return PlayRoundOut.from_answered(game, answered_round)
 
 
-# Fixed, not env-configurable yet (single-user/household app. max-age is short on purpose - disk/bandwidth aren't a
+# Fixed, not env-configurable yet (household-sized app). max-age is short on purpose - disk/bandwidth aren't a
 # real concern at this app's scale, so there's no reason not to revalidate often; stale-while-
 # revalidate is what actually keeps thumbnails feeling instant past that point, by letting the
 # browser serve the cached copy immediately and refresh it in the background instead of blocking on a
@@ -202,11 +203,14 @@ def _proxy_thumbnail(request: Request, fetch: Callable[[], tuple[bytes, str]]) -
     try:
         content, content_type = fetch()
     except httpx.HTTPStatusError as exc:
-        if exc.response.status_code in (401, 403):
-            # Immich rejected the request itself (bad/expired IMMICH_API_KEY) - a config problem, not
-            # "this particular entity has no photo". Keep that distinct from a plain 404 so it doesn't
-            # get misread as normal missing-thumbnail data.
-            raise HTTPException(status_code=502, detail="Immich rejected the request - check IMMICH_API_KEY") from exc
+        if exc.response.status_code == 401:
+            # Immich rejected the player's own key itself (revoked/expired) - not "this entity has
+            # no photo". Same 409 every other route gives an unlinked player, so the frontend asks
+            # them to link a new key.
+            raise ImmichNotLinkedError() from exc
+        # 403 lands here too, on purpose: a key valid for its user but not for this entity (e.g.
+        # another player's leaderboard avatar from a library this one can't see) just reads as no
+        # photo - the frontend shows its placeholder instead of an image the player can't see.
         raise HTTPException(status_code=404, detail="thumbnail not found") from exc
     except httpx.RequestError as exc:
         raise HTTPException(status_code=502, detail="could not reach Immich") from exc

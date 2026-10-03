@@ -4,6 +4,7 @@ import { BrowserRouter, Route, Routes } from "react-router-dom"
 import { AuthProvider } from "./auth/AuthProvider"
 import { LoginPage } from "./auth/LoginPage"
 import { RequireAuth } from "./auth/RequireAuth"
+import { RequireImmich } from "./auth/RequireImmich"
 import { ResetPasswordPage } from "./auth/ResetPasswordPage"
 import { SignupPage } from "./auth/SignupPage"
 import { DailyGameRoute } from "./menu/DailyGameRoute"
@@ -23,6 +24,9 @@ const ChangePasswordPage = lazy(() =>
 )
 const EditProfilePage = lazy(() =>
   import("./auth/EditProfilePage").then((m) => ({ default: m.EditProfilePage })),
+)
+const ImmichConnectionPage = lazy(() =>
+  import("./auth/ImmichConnectionPage").then((m) => ({ default: m.ImmichConnectionPage })),
 )
 const ProfilePage = lazy(() =>
   import("./auth/ProfilePage").then((m) => ({ default: m.ProfilePage })),
@@ -54,21 +58,26 @@ function App() {
                   (renders <Outlet /> once logged in, redirects to /login otherwise) rather than
                   wrapping each element individually. */}
               <Route element={<RequireAuth />}>
-                <Route path="/" element={<MainMenu />} />
                 <Route path="/profile" element={<ProfilePage />} />
                 <Route path="/profile/edit" element={<EditProfilePage />} />
                 <Route path="/profile/password" element={<ChangePasswordPage />} />
+                <Route path="/profile/immich" element={<ImmichConnectionPage />} />
                 <Route path="/settings" element={<SettingsPage />} />
                 <Route path="/admin" element={<AdminPage />} />
                 <Route path="/admin/reports" element={<AdminReportsPage />} />
                 <Route path="/:gameType/:mode/leaderboard" element={<LeaderboardPage />} />
-                <Route path="/:gameType/:mode/game/:gameId/rounds" element={<RoundsPage />} />
                 <Route
                   path="/daily/:gameType/:mode/leaderboard"
                   element={<DailyLeaderboardPage />}
                 />
-                <Route path="/daily/:gameType/:mode" element={<DailyGameRoute />} />
-                <Route path="/:gameType/:mode" element={<GameRoute />} />
+                {/* Everything that shows the player's own photos needs their Immich account
+                    linked first - RequireImmich sends them to /profile/immich otherwise. */}
+                <Route element={<RequireImmich />}>
+                  <Route path="/" element={<MainMenu />} />
+                  <Route path="/:gameType/:mode/game/:gameId/rounds" element={<RoundsPage />} />
+                  <Route path="/daily/:gameType/:mode" element={<DailyGameRoute />} />
+                  <Route path="/:gameType/:mode" element={<GameRoute />} />
+                </Route>
               </Route>
             </Routes>
           </Suspense>

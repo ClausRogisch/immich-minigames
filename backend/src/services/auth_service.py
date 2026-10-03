@@ -190,6 +190,32 @@ class AuthService:
         audit("skin_updated", target_user_id=str(user.id), fields=["skin_person_id"])
         return user
 
+    def link_immich(
+        self, user: UserModel, *, immich_user_id: UUID, encrypted_api_key: str, name: str, email: str
+    ) -> UserModel:
+        """Stores an already-validated, already-encrypted Immich API key (see api/auth_api.py's
+        PUT /auth/me/immich). Linking a *different* Immich user than before clears the skin - it
+        was one of the previous library's people, which the new one may not know."""
+        if user.immich_user_id is not None and user.immich_user_id != immich_user_id:
+            user.skin_person_id = None
+        user.immich_user_id = immich_user_id
+        user.immich_api_key_encrypted = encrypted_api_key
+        user.immich_user_name = name
+        user.immich_user_email = email
+        self._session.commit()
+        audit("immich_linked", target_user_id=str(user.id), immich_user_id=str(immich_user_id))
+        return user
+
+    def unlink_immich(self, user: UserModel) -> UserModel:
+        """Forgets the stored key. immich_user_id is kept (only the key goes), so relinking the same
+        Immich account later keeps the skin - see link_immich."""
+        user.immich_api_key_encrypted = None
+        user.immich_user_name = None
+        user.immich_user_email = None
+        self._session.commit()
+        audit("immich_unlinked", target_user_id=str(user.id))
+        return user
+
     def authenticate(self, email: str, password: str) -> UserModel:
         user = self._session.scalar(select(UserModel).where(UserModel.email == email))
         # Same error whether the email doesn't exist or the password is wrong - never reveal

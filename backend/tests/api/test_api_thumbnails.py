@@ -1,6 +1,8 @@
 import hashlib
 from uuid import uuid4
 
+import httpx
+
 from api.deps import get_immich_service
 from main import app
 
@@ -61,6 +63,39 @@ class TestProxyThumbnailCaching:
 
         assert response.status_code == 200
         assert response.content == b"fake-jpeg-bytes"
+
+
+class _RejectingImmichService:
+    """Immich answering the player's own key with `status` (see api/api.py's _proxy_thumbnail)."""
+
+    def __init__(self, status: int) -> None:
+        self._status = status
+
+    def get_person_thumbnail(self, person_id):
+        request = httpx.Request("GET", "http://immich/api/people/x/thumbnail")
+        raise httpx.HTTPStatusError("rejected", request=request, response=httpx.Response(self._status, request=request))
+
+
+class TestImmichRejections:
+    def test_revoked_key_asks_the_player_to_relink(self, logged_client):
+        app.dependency_overrides[get_immich_service] = lambda: _RejectingImmichService(401)
+        try:
+            response = logged_client.get(f"/api/v1/people/{uuid4()}/thumbnail")
+        finally:
+            del app.dependency_overrides[get_immich_service]
+
+        assert response.status_code == 409
+        assert response.json()["detail"] == "immich_not_linked"
+
+    def test_something_the_key_cant_see_reads_as_no_photo(self, logged_client):
+        # e.g. another player's leaderboard avatar from a library this player can't see.
+        app.dependency_overrides[get_immich_service] = lambda: _RejectingImmichService(403)
+        try:
+            response = logged_client.get(f"/api/v1/people/{uuid4()}/thumbnail")
+        finally:
+            del app.dependency_overrides[get_immich_service]
+
+        assert response.status_code == 404
 
 
 class TestRateLimit:

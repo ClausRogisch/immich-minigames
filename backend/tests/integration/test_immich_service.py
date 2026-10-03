@@ -2,7 +2,7 @@ from datetime import date
 from uuid import uuid4
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from persistence.immich_tables import person
 
@@ -339,7 +339,16 @@ class TestGetRandomAssetWithNamedFaces:
         # test_returns_empty_when_no_eligible_asset_exists) so this exercises those assets, not just
         # whichever one random() happens to land on.
         with immich_engine.connect() as conn:
-            hidden_ids = {row.id for row in conn.execute(select(person.c.id).where(person.c.isHidden.is_(True)))}
+            # Unscoped (this fixture's ImmichService), a person is hidden only if every Immich user
+            # who has them hid them - see services/immich/_scope.py's person_rows.
+            hidden_ids = {
+                row.id
+                for row in conn.execute(
+                    select(person.c.personGroupId.label("id"))
+                    .group_by(person.c.personGroupId)
+                    .having(func.bool_and(person.c.isHidden))
+                )
+            }
         assert hidden_ids, "dev data must include at least one hidden named person to exercise this"
 
         excluded = set()
@@ -364,7 +373,10 @@ class TestHasNamedFacesAsset:
         # discover and exclude each asset in turn.
         with immich_engine.connect() as conn:
             named_ids = {
-                row.id for row in conn.execute(select(person.c.id).where(person.c.name != "", ~person.c.isHidden))
+                row.id
+                for row in conn.execute(
+                    select(person.c.personGroupId.label("id")).where(person.c.name != "", ~person.c.isHidden)
+                )
             }
         assert named_ids, "dev data must have at least one named, non-hidden person to exercise this"
 

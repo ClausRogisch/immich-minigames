@@ -67,22 +67,29 @@ asset_file = Table(
     Column("type", String),
 )
 
+# Immich 3 split people in two (its "ClusterGroups" migration): `person_group` is the shared face
+# cluster, and its id is what Immich's API and every `asset_face` row now call a person's id.
+# `person` holds one row per (Immich user, person_group) with that user's own name/birthDate/
+# isHidden for the cluster - two users can name the same face differently, so every read of these
+# columns must pick one user's row (see services/immich/_scope.py). The upgrade reused each old
+# person.id as its person_group id, so person ids this app stored before Immich 3 still resolve.
 person = Table(
     "person",
     metadata,
-    Column("id", Uuid, primary_key=True),
-    Column("ownerId", Uuid),
+    Column("ownerId", Uuid, primary_key=True),
+    Column("personGroupId", Uuid, primary_key=True),
     Column("name", String),
     Column("birthDate", Date),
     Column("thumbnailPath", String),
     Column("isHidden", Boolean),
 )
 
+# Immich 3 dropped album.ownerId - ownership is an album_user row with role "owner", same table as
+# every other member.
 album = Table(
     "album",
     metadata,
     Column("id", Uuid, primary_key=True),
-    Column("ownerId", Uuid),
     Column("albumName", String),
     # The album's chosen cover asset (nullable - Immich falls back to the first asset). Used by
     # MoreOrLess's albumAssets mode to serve an album thumbnail - see immich_service.get_albums.
@@ -103,7 +110,8 @@ asset_face = Table(
     metadata,
     Column("id", Uuid, primary_key=True),
     Column("assetId", Uuid),
-    Column("personId", Uuid),
+    # Renamed from personId in Immich 3 - references person_group.id, see `person` above.
+    Column("personGroupId", Uuid),
     Column("isVisible", Boolean),
     Column("deletedAt", DateTime(timezone=True)),
     # Resolution the face detection was computed on (not necessarily the asset's own resolution -
@@ -116,4 +124,23 @@ asset_face = Table(
     Column("boundingBoxY1", Integer),
     Column("boundingBoxX2", Integer),
     Column("boundingBoxY2", Integer),
+)
+
+
+# Every member of an album, owner included (role "owner"/"editor"/"viewer") - the only way to tell
+# which Immich user can see an album since Immich 3.
+album_user = Table(
+    "album_user",
+    metadata,
+    Column("albumId", Uuid, primary_key=True),
+    Column("userId", Uuid, primary_key=True),
+)
+
+# Partner sharing: sharedById's library is visible to sharedWithId. inTimeline only controls
+# whether it's mixed into sharedWithId's own timeline - the partner's photos are viewable either way.
+partner = Table(
+    "partner",
+    metadata,
+    Column("sharedById", Uuid, primary_key=True),
+    Column("sharedWithId", Uuid, primary_key=True),
 )

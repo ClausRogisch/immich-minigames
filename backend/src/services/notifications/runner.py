@@ -29,6 +29,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from config import Settings
 from persistence.games_repository import GameRepository
 from persistence.notifications import NotificationDeliveryModel, NotificationPreferencesModel, PushSubscriptionModel
+from persistence.users import UserModel
 from services.daily_challenge_service import DailyChallengeService
 from services.daily_games_service import DailyGamesService
 from services.daily_settings import DailySettingsService
@@ -149,7 +150,17 @@ def _process_daily(
             logger.exception("daily notification failed for user %s", user_id)
 
 
-def _process_installation_wide(
+def _library_of(session: Session, user_id: UUID) -> ImmichService | None:
+    """An ImmichService scoped to this player's linked Immich library, or None if they have none
+    linked (nothing to notify them about). Postgres-only - these notifications never fetch an
+    image, so the player's key itself is never decrypted here."""
+    user = session.get(UserModel, user_id)
+    if user is None or user.immich_user_id is None or user.immich_api_key_encrypted is None:
+        return None
+    return ImmichService(user_id=user.immich_user_id)
+
+
+def _process_per_library(
     session: Session,
     notification_service: NotificationService,
     now: datetime,
@@ -157,9 +168,10 @@ def _process_installation_wide(
     preference_flag,
     build_message,
 ) -> None:
-    """Shared shape for birthdays and album_anniversary - both compute one piece of content ONCE
-    (not per user, unlike the daily reminder) and fan the same message out to every candidate
-    user, in their own language."""
+    """Shared shape for birthdays and album_anniversary - unlike the daily reminder, their content
+    is about the player's own Immich library (see services/immich/_scope.py), so it's computed per
+    candidate player: `build_message(immich_service, language)` returns None when there's nothing
+    to say for that player today, and nothing is sent or marked delivered."""
     today = now.date()
     user_ids = _candidate_user_ids(session, preference_flag)
     if not user_ids:
@@ -167,10 +179,15 @@ def _process_installation_wide(
     ttl = _seconds_until_midnight(now)
     for user_id in user_ids:
         try:
-            if not _mark_delivered(session, user_id, kind, today):
+            immich_service = _library_of(session, user_id)
+            if immich_service is None:
                 continue
             preferences = notification_service.get_preferences(user_id)
-            message = build_message(preferences.language)
+            message = build_message(immich_service, preferences.language)
+            if message is None:
+                continue
+            if not _mark_delivered(session, user_id, kind, today):
+                continue
             notification_service.send_to_user(
                 user_id, title=message.title, body=message.body, url="/", tag=kind, ttl=ttl
             )
@@ -187,7 +204,6 @@ def _prune_old_deliveries(session: Session, today: date) -> None:
 def run_tick(
     session: Session,
     settings: Settings,
-    immich_service: ImmichService,
     ml_service: MLService,
     now: datetime,
 ) -> None:
@@ -201,6 +217,9 @@ def run_tick(
     notification_service = NotificationService(session, settings)
     reports_service = ReportsService(session)
     game_repository = GameRepository(session)
+    # Unscoped and never actually queried: _process_daily only lists each player's daily status,
+    # which never generates a challenge - DailyGamesService just needs one to be constructed.
+    immich_service = ImmichService()
     game_factory = GameFactory(session, immich_service, ml_service, GameSettingsService(session), reports_service)
     daily_settings_service = DailySettingsService(session)
     daily_challenge_service = DailyChallengeService(session, immich_service, reports_service)
@@ -212,28 +231,34 @@ def run_tick(
         _process_daily(session, notification_service, daily_games_service, game_repository, now, active_kinds)
 
     if "birthdays" in active_kinds:
-        entries = content.todays_birthdays(immich_service, reports_service, today)
-        if entries:
-            _process_installation_wide(
-                session,
-                notification_service,
-                now,
-                "birthdays",
-                NotificationPreferencesModel.birthdays,
-                lambda language: messages.birthdays(language, entries),
-            )
+
+        def birthdays_message(library: ImmichService, language: str):
+            entries = content.todays_birthdays(library, reports_service, today)
+            return messages.birthdays(language, entries) if entries else None
+
+        _process_per_library(
+            session,
+            notification_service,
+            now,
+            "birthdays",
+            NotificationPreferencesModel.birthdays,
+            birthdays_message,
+        )
 
     if "album_anniversary" in active_kinds:
-        album_entries = content.todays_album_anniversaries(immich_service, today)
-        if album_entries:
-            _process_installation_wide(
-                session,
-                notification_service,
-                now,
-                "album_anniversary",
-                NotificationPreferencesModel.album_anniversary,
-                lambda language: messages.album_anniversary(language, album_entries),
-            )
+
+        def album_anniversary_message(library: ImmichService, language: str):
+            entries = content.todays_album_anniversaries(library, today)
+            return messages.album_anniversary(language, entries) if entries else None
+
+        _process_per_library(
+            session,
+            notification_service,
+            now,
+            "album_anniversary",
+            NotificationPreferencesModel.album_anniversary,
+            album_anniversary_message,
+        )
 
     _prune_old_deliveries(session, today)
 
@@ -241,7 +266,6 @@ def run_tick(
 def _locked_tick(
     session_factory: sessionmaker,
     settings: Settings,
-    immich_service: ImmichService,
     ml_service: MLService,
     now: datetime,
 ) -> None:
@@ -252,7 +276,7 @@ def _locked_tick(
         if not acquired:
             return
         try:
-            run_tick(session, settings, immich_service, ml_service, now)
+            run_tick(session, settings, ml_service, now)
         finally:
             # Explicit unlock, same session that acquired it - pg_try_advisory_lock is session-
             # scoped, not transaction-scoped, so skipping this would leave the lock held by
@@ -268,12 +292,10 @@ class NotificationRunner:
         self,
         session_factory: sessionmaker,
         settings: Settings,
-        immich_service: ImmichService,
         ml_service: MLService,
     ) -> None:
         self._session_factory = session_factory
         self._settings = settings
-        self._immich_service = immich_service
         self._ml_service = ml_service
         self._thread: threading.Thread | None = None
         self._stop_event = threading.Event()
@@ -311,9 +333,7 @@ class NotificationRunner:
         # Naive datetime.now() - the server's own local time (a single TZ per installation, from
         # the process/container's TZ env var), never UTC and never tz-aware (schedule.py's
         # SLOT_TIMES/comparisons are naive throughout).
-        _locked_tick(
-            self._session_factory, self._settings, self._immich_service, self._ml_service, now or datetime.now()
-        )
+        _locked_tick(self._session_factory, self._settings, self._ml_service, now or datetime.now())
 
     def shutdown(self, timeout: float = 5.0) -> None:
         self._stop_event.set()

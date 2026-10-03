@@ -8,6 +8,12 @@ Postgres, by entity - assets.py/persons.py/albums.py/faces.py. ImmichService its
 facade over those modules: ~50 call sites across every game, every daily.py, the registry,
 deps.py and the tests receive an ImmichService, so the facade keeps that surface exactly as it
 was rather than forcing each call site to depend on multiple injected services.
+
+Each instance is bound to one player: `user_id` (their Immich user id) scopes every Postgres query
+to what that user can see in Immich (see ._scope), and `api_key` (their own Immich API key) is what
+image requests authenticate with. api/deps.py's get_immich_service builds one per request from the
+logged-in player's linked account; `user_id=None` is an unscoped, installation-wide instance, only
+for admin views and background jobs.
 """
 
 from datetime import date
@@ -30,9 +36,23 @@ __all__ = ["ContentQueries", "ImmichService", "LocationField", "MediaType"]
 
 
 class ImmichService:
-    def __init__(self, engine: Engine | None = None, settings: Settings | None = None) -> None:
+    def __init__(
+        self,
+        engine: Engine | None = None,
+        settings: Settings | None = None,
+        *,
+        user_id: UUID | None = None,
+        api_key: str | None = None,
+    ) -> None:
         self._engine = engine or get_immich_engine()
         self._settings = settings or get_settings()
+        self._user_id = user_id
+        self._api_key = api_key
+
+    @property
+    def user_id(self) -> UUID | None:
+        """The Immich user this instance is scoped to, None if unscoped."""
+        return self._user_id
 
     def get_assets(
         self,
@@ -51,6 +71,7 @@ class ImmichService:
     ) -> list[Asset]:
         return assets.get_assets(
             self._engine,
+            self._user_id,
             media_type=media_type,
             with_location=with_location,
             date_from=date_from,
@@ -65,7 +86,7 @@ class ImmichService:
         )
 
     def get_distinct_locations(self, field: LocationField) -> list[str]:
-        return assets.get_distinct_locations(self._engine, field)
+        return assets.get_distinct_locations(self._engine, self._user_id, field)
 
     def get_persons(
         self,
@@ -82,6 +103,7 @@ class ImmichService:
     ) -> list[Person]:
         return persons.get_persons(
             self._engine,
+            self._user_id,
             named_only=named_only,
             with_birthdate=with_birthdate,
             min_asset_count=min_asset_count,
@@ -94,21 +116,23 @@ class ImmichService:
         )
 
     def get_persons_with_birthday_on(self, month: int, day: int) -> list[Person]:
-        return persons.get_persons_with_birthday_on(self._engine, month, day)
+        return persons.get_persons_with_birthday_on(self._engine, self._user_id, month, day)
 
     def search_persons(self, query: str, *, offset: int = 0, limit: int = 3) -> list[Person]:
-        return persons.search_persons(self._engine, query, offset=offset, limit=limit)
+        return persons.search_persons(self._engine, self._user_id, query, offset=offset, limit=limit)
 
     def get_person_first_asset_date(self, person_id: UUID) -> date | None:
-        return persons.get_person_first_asset_date(self._engine, person_id)
+        return persons.get_person_first_asset_date(self._engine, self._user_id, person_id)
 
     def get_assets_together_count(self, person_a_id: UUID, person_b_id: UUID) -> int:
-        return persons.get_assets_together_count(self._engine, person_a_id, person_b_id)
+        return persons.get_assets_together_count(self._engine, self._user_id, person_a_id, person_b_id)
 
     def get_top_co_occurring_persons(
         self, person_id: UUID, *, limit: int = 3, exclude_ids: frozenset[UUID] = frozenset()
     ) -> list[tuple[UUID, str, int]]:
-        return persons.get_top_co_occurring_persons(self._engine, person_id, limit=limit, exclude_ids=exclude_ids)
+        return persons.get_top_co_occurring_persons(
+            self._engine, self._user_id, person_id, limit=limit, exclude_ids=exclude_ids
+        )
 
     def get_random_asset_with_named_faces(
         self,
@@ -117,7 +141,7 @@ class ImmichService:
         exclude_person_ids: frozenset[UUID] = frozenset(),
     ) -> list[Face]:
         return faces.get_random_asset_with_named_faces(
-            self._engine, exclude_asset_ids=exclude_asset_ids, exclude_person_ids=exclude_person_ids
+            self._engine, self._user_id, exclude_asset_ids=exclude_asset_ids, exclude_person_ids=exclude_person_ids
         )
 
     def has_named_faces_asset(
@@ -127,11 +151,11 @@ class ImmichService:
         exclude_person_ids: frozenset[UUID] = frozenset(),
     ) -> bool:
         return faces.has_named_faces_asset(
-            self._engine, exclude_asset_ids=exclude_asset_ids, exclude_person_ids=exclude_person_ids
+            self._engine, self._user_id, exclude_asset_ids=exclude_asset_ids, exclude_person_ids=exclude_person_ids
         )
 
     def get_named_persons_in_asset(self, asset_id: UUID) -> list[str]:
-        return faces.get_named_persons_in_asset(self._engine, asset_id)
+        return faces.get_named_persons_in_asset(self._engine, self._user_id, asset_id)
 
     def get_albums(
         self,
@@ -146,6 +170,7 @@ class ImmichService:
     ) -> list[Album]:
         return albums.get_albums(
             self._engine,
+            self._user_id,
             ids=ids,
             name_query=name_query,
             min_asset_count=min_asset_count,
@@ -156,7 +181,7 @@ class ImmichService:
         )
 
     def search_albums(self, query: str, *, offset: int = 0, limit: int = 3) -> list[Album]:
-        return albums.search_albums(self._engine, query, offset=offset, limit=limit)
+        return albums.search_albums(self._engine, self._user_id, query, offset=offset, limit=limit)
 
     def get_album_cover_asset_id(self, album_id: UUID) -> UUID | None:
         return albums.get_album_cover_asset_id(self._engine, album_id)
@@ -168,19 +193,19 @@ class ImmichService:
         return albums.get_album_last_asset_date(self._engine, album_id)
 
     def get_albums_starting_on(self, month: int, day: int) -> list[tuple[UUID, str, date]]:
-        return albums.get_albums_starting_on(self._engine, month, day)
+        return albums.get_albums_starting_on(self._engine, self._user_id, month, day)
 
     def get_album_named_face_counts(self, album_id: UUID) -> list[tuple[UUID, str, int]]:
-        return albums.get_album_named_face_counts(self._engine, album_id)
+        return albums.get_album_named_face_counts(self._engine, self._user_id, album_id)
 
     def get_persons_present_in_album(self, album_id: UUID, person_ids: frozenset[UUID]) -> frozenset[UUID]:
         return albums.get_persons_present_in_album(self._engine, album_id, person_ids)
 
     def get_asset_thumbnail(self, asset_id: UUID, size: str = "preview") -> tuple[bytes, str]:
-        return images.get_asset_thumbnail(self._settings, asset_id, size)
+        return images.get_asset_thumbnail(self._settings, self._api_key, asset_id, size)
 
     def get_person_thumbnail(self, person_id: UUID) -> tuple[bytes, str]:
-        return images.get_person_thumbnail(self._settings, person_id)
+        return images.get_person_thumbnail(self._settings, self._api_key, person_id)
 
 
 class ContentQueries(Protocol):

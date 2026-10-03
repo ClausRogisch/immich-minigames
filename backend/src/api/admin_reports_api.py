@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, Query
 
 from api.admin_api import get_current_admin_user
 from api.auth_api import get_auth_service
-from api.deps import get_immich_service, get_reports_service
+from api.deps import get_admin_immich_service, get_reports_service
 from api.dto.reports import AdminReportCountsOut, AdminReportOut, UpdateReportIn
 from games.report_spec import ReportEntity
 from persistence.reports import ReportModel
@@ -62,7 +62,7 @@ def list_reports(
     solved: bool,
     _admin: Annotated[UserModel, Depends(get_current_admin_user)],
     reports_service: Annotated[ReportsService, Depends(get_reports_service)],
-    immich_service: Annotated[ImmichService, Depends(get_immich_service)],
+    immich_service: Annotated[ImmichService, Depends(get_admin_immich_service)],
     auth_service: Annotated[AuthService, Depends(get_auth_service)],
     offset: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=50)] = 20,
@@ -90,7 +90,7 @@ def update_report(
     body: UpdateReportIn,
     _admin: Annotated[UserModel, Depends(get_current_admin_user)],
     reports_service: Annotated[ReportsService, Depends(get_reports_service)],
-    immich_service: Annotated[ImmichService, Depends(get_immich_service)],
+    immich_service: Annotated[ImmichService, Depends(get_admin_immich_service)],
     auth_service: Annotated[AuthService, Depends(get_auth_service)],
 ) -> AdminReportOut:
     report = reports_service.set_solved(report_id, body.solved)

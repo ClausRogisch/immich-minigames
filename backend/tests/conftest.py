@@ -19,6 +19,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
+from api.deps import get_immich_service
 from api.rate_limit import limiter
 from api.request_context import context_fields
 from config import get_settings
@@ -212,8 +213,28 @@ def _reset_rate_limiter():
     limiter.reset()
 
 
+def _unscoped_immich_service() -> ImmichService:
+    return ImmichService(api_key=get_settings().immich_api_key)
+
+
 @pytest.fixture
 def client():
+    """API tests play as freshly registered accounts with no linked Immich account, which every
+    game/search/thumbnail route would answer with a 409 (api/deps.py's get_immich_service) - so they
+    get an unscoped ImmichService over the whole dev library instead, authenticating images with the
+    .env's IMMICH_API_KEY. Tests about linking/scoping itself use `unlinked_client` instead."""
+    app.dependency_overrides[get_immich_service] = _unscoped_immich_service
+    try:
+        with TestClient(app) as test_client:
+            yield test_client
+    finally:
+        app.dependency_overrides.pop(get_immich_service, None)
+
+
+@pytest.fixture
+def unlinked_client():
+    """Like `client`, but with the real per-player get_immich_service - routes behave as they do
+    in production for an account's own linked (or missing) Immich account."""
     with TestClient(app) as test_client:
         yield test_client
 

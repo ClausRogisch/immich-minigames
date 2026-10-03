@@ -11,10 +11,14 @@ from sqlalchemy.orm import Session
 from config import Settings, get_settings
 from persistence.base import get_session_factory
 from persistence.games_repository import GameRepository
+from persistence.users import UserModel
+from services import immich_key_vault
+from services.auth_service import UnauthorizedError
 from services.daily_challenge_service import DailyChallengeService
 from services.daily_games_service import DailyGamesService
 from services.daily_settings import DailySettingsService
 from services.embedding_jobs import EmbeddingJobRunner
+from services.errors import ImmichNotLinkedError
 from services.game_factory import GameFactory
 from services.game_settings_service import GameSettingsService
 from services.games_service import GamesService
@@ -50,12 +54,50 @@ def get_db_session(request: Request) -> Iterator[Session]:
         session.close()
 
 
+def get_current_user(request: Request) -> UserModel:
+    """Resolves the current user from request.state, where api/auth_middleware.py already placed
+    it for every request that reaches here (anything outside its allow-list). Routes declare
+    Depends(get_current_user) as their auth dependency, decoupled from where the identity itself
+    comes from. The defensive None-check below should never actually trigger (the middleware
+    guarantees state.user is set for anything that isn't allow-listed, and no allow-listed route
+    uses this dependency), but costs nothing to keep. Lives here (re-exported by api/auth_api.py)
+    so get_immich_service below can depend on it without importing auth_api.py, which imports
+    this module."""
+    user = getattr(request.state, "user", None)
+    if user is None:
+        raise UnauthorizedError("not authenticated")
+    return user
+
+
+def immich_service_for(user: UserModel) -> ImmichService:
+    """An ImmichService scoped to `user`'s own linked Immich account - every query only sees what
+    that Immich user can see, and images are fetched with their own key (see services/immich/).
+    Raises ImmichNotLinkedError if they haven't linked one (or it can't be decrypted anymore).
+    Shared by get_immich_service below and the places that act on behalf of a user other than the
+    caller (an admin setting someone's skin, the notification runner)."""
+    api_key = immich_key_vault.decrypt(user.immich_api_key_encrypted)
+    if user.immich_user_id is None or api_key is None:
+        raise ImmichNotLinkedError()
+    return ImmichService(user_id=user.immich_user_id, api_key=api_key)
+
+
 # Here (not api/api.py) so api/auth_api.py can also depend on ImmichService (to validate a
 # skin's person_id, see PUT /auth/me/skin) without a circular import - api.py already imports
 # auth_api.py's router, so the reverse import would loop.
-@lru_cache(maxsize=1)
-def get_immich_service() -> ImmichService:
-    return ImmichService()
+def get_immich_service(user: Annotated[UserModel, Depends(get_current_user)]) -> ImmichService:
+    return immich_service_for(user)
+
+
+def get_admin_immich_service(
+    user: Annotated[UserModel, Depends(get_current_user)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> ImmichService:
+    """Unscoped (installation-wide) - only for admin-only routes, which already gate on
+    get_current_admin_user themselves (e.g. resolving names of entities other players reported).
+    Images go out with the admin's own linked key, falling back to the optional installation-wide
+    IMMICH_API_KEY when they haven't linked one."""
+    api_key = immich_key_vault.decrypt(user.immich_api_key_encrypted) or settings.immich_api_key
+    return ImmichService(user_id=None, api_key=api_key)
 
 
 @lru_cache(maxsize=1)
@@ -97,11 +139,13 @@ def get_notifications_service(
 # Here (not private to api/admin_notifications_api.py) so main.py's lifespan can also depend on it
 # (to start it at boot and shut it down on exit) without importing an api/*_api.py router module
 # for it - same reasoning as get_embedding_job_runner above. Reuses get_immich_service()/
-# get_ml_service()'s memoized instances rather than constructing a second pair of connection
-# pools that would otherwise sit idle next to the ones every request already uses.
+# get_ml_service()'s memoized instance rather than constructing a second pair of connection
+# pools that would otherwise sit idle next to the ones every request already uses. No
+# ImmichService: the runner builds one per notified player (runner._library_of), since birthdays
+# and album anniversaries are about each player's own library.
 @lru_cache(maxsize=1)
 def get_notification_runner() -> NotificationRunner:
-    return NotificationRunner(_session_factory, get_settings(), get_immich_service(), get_ml_service())
+    return NotificationRunner(_session_factory, get_settings(), get_ml_service())
 
 
 def get_game_factory(

@@ -31,16 +31,19 @@ export interface ImmichLinks {
   /** `immich://` deep link into the mobile app, which opens whichever server that app is logged
    * into - so, unlike webUrl, it carries no base URL of its own. */
   appUrl: (kind: ImmichEntityKind, id: string) => string
+  /** Immich's own "API Keys" settings page, where a player creates the key they link here. */
+  apiKeysUrl: string
 }
 
 function linksFromBaseUrl(baseUrl: string): ImmichLinks {
   return {
     webUrl: (kind, id) => `${baseUrl}/${WEB_PATHS[kind]}/${id}`,
     appUrl: (kind, id) => `immich://${APP_HOSTS[kind]}?id=${encodeURIComponent(id)}`,
+    apiKeysUrl: `${baseUrl}/user-settings?isOpen=api-keys`,
   }
 }
 
-// Module-scope cache (not a React Context - only the rounds review view needs this, so a global
+// Module-scope cache (not a React Context - only a couple of views need this, so a global
 // provider would be overkill) shared by every ImmichLink instance on a page, so mounting several at
 // once (e.g. one per row of the Immichdle table) still fires exactly one /config request.
 let cached: ImmichLinks | null | undefined

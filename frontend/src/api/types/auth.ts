@@ -12,6 +12,16 @@ export interface User {
   // (menu/UserMenu.tsx) and the /admin routes (admin/AdminLayout.tsx).
   is_admin: boolean
   created_at: string
+  // The player's own linked Immich account (never the key itself), or null until they link one -
+  // RequireImmich.tsx keeps every game behind this, since everything is scoped to the player's own
+  // Immich library (see backend/src/services/immich/_scope.py).
+  immich_account: ImmichAccount | null
+}
+
+// Mirrors backend/src/api/auth_schemas.py's ImmichAccountOut.
+export interface ImmichAccount {
+  name: string
+  email: string
 }
 
 export interface RegisterIn {

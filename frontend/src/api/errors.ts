@@ -11,6 +11,15 @@ export function apiErrorMessage(err: unknown): string | undefined {
   return undefined
 }
 
+// Every route that reads the player's Immich library answers this (409) while they have no linked
+// Immich account, or Immich rejected the one they linked - see backend/src/services/errors.py's
+// ImmichNotLinkedError. AuthProvider.tsx's interceptor turns it into a redirect to link one.
+export const IMMICH_NOT_LINKED = "immich_not_linked"
+
+export function isImmichNotLinked(err: unknown): boolean {
+  return apiErrorStatus(err) === 409 && apiErrorMessage(err) === IMMICH_NOT_LINKED
+}
+
 // The HTTP status of a failed request, when the failure was an HTTP response at all - for callers
 // that branch on a specific status (e.g. the daily flow treating 409 "already played" as a state,
 // not an error) rather than on the human-readable detail above.

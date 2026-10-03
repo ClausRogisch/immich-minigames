@@ -13,7 +13,7 @@ Immich is reached through **two separate channels**, and which one to use is not
 |---|---|---|
 | Used for | All game metadata: assets, people, faces, dates, GPS, face embeddings | Image bytes only |
 | Why | Immich's API has no endpoint for "a random photo that has GPS and a thumbnail, excluding these 12 ids" — that is a query, and expressing it as one is far cheaper than paging the API | The image files live on disk, not in Postgres. The DB only stores paths, which this app has no filesystem access to |
-| Auth | `DB_APP_USERNAME` / `DB_APP_PASSWORD` (scoped role, below) | `IMMICH_API_KEY` header (`x-api-key`) |
+| Auth | `DB_APP_USERNAME` / `DB_APP_PASSWORD` (scoped role, below) | The **player's own** Immich API key (`x-api-key`), see [Per-player scoping](#per-player-scoping) |
 | Code | `ImmichService.get_assets` / `get_persons` / `search_persons` / … , `MLService` | `ImmichService.get_asset_thumbnail` / `get_person_thumbnail` |
 
 **Never fetch image bytes via SQL, and never fetch metadata via the REST API.** Mixing the two is
@@ -32,10 +32,12 @@ Both thumbnail methods are thin proxies over Immich, returning `(bytes, content-
 One pooled `httpx.Client` with a 10s timeout is shared process-wide (`_get_http_client`,
 `lru_cache`d) so a slow Immich cannot exhaust worker threads.
 
-> ⚠️ These two endpoints are re-exposed by this app **without any authentication or scoping** —
-> anyone who can reach the backend can enumerate any thumbnail in the Immich library, and in
-> Who'sThatPerson a player can bypass the blacked-out faces entirely by opening the asset URL
-> directly.
+Both are fetched with the requesting player's own key, so Immich itself refuses anything that
+player can't see: a 403 is mapped to a plain 404 (the frontend shows its placeholder), and a 401
+(revoked key) to the same 409 `immich_not_linked` an unlinked player gets.
+
+> ⚠️ Within their own library, a player can still open an asset's thumbnail URL directly - in
+> Who'sThatPerson that bypasses the blacked-out faces.
 
 ## The scoped DB role
 
@@ -73,10 +75,21 @@ are Immich's tables, migrated by Immich).
 **`asset_file`** — `id`, `assetId`, `type`. Used only to prove a thumbnail exists
 (`type = 'thumbnail'`) before a game shows an asset.
 
-**`person`** — `id`, `ownerId`, `name`, `birthDate`, `thumbnailPath`, `isHidden`.
+**`person`** — `ownerId`, `personGroupId` (together the primary key), `name`, `birthDate`,
+`thumbnailPath`, `isHidden`. Since Immich 3 there is no `person.id`: the shared face cluster is a
+`person_group`, and its id is what Immich's API (`/people/{id}/...`) and every `asset_face` call a
+person's id. `person` is one row per (Immich user, cluster) with *that user's* name/birth date/hidden
+flag, so reads must pick one user's row (`services/immich/_scope.py`'s `person_rows`). Immich 3's
+upgrade reused each old `person.id` as its `person_group` id, so ids stored before then still
+resolve.
 
-**`asset_face`** — `id`, `assetId`, `personId`, `isVisible`, `deletedAt`, plus the detection box:
-`imageWidth`, `imageHeight`, `boundingBoxX1/Y1/X2/Y2`.
+**`asset_face`** — `id`, `assetId`, `personGroupId` (was `personId` before Immich 3), `isVisible`,
+`deletedAt`, plus the detection box: `imageWidth`, `imageHeight`, `boundingBoxX1/Y1/X2/Y2`.
+
+**`album_user`** — `albumId`, `userId`. Every album member, owner included (Immich 3 dropped
+`album.ownerId`).
+
+**`partner`** — `sharedById`, `sharedWithId`. Partner sharing.
 
 **`face_search`** — not declared as a `Table()`; queried via raw SQL in `MLService` because of the
 pgvector operator. Holds `faceId` and `embedding vector(512)`.
@@ -115,6 +128,29 @@ the one that picks the candidate asset (so an asset whose only named face belong
 person is never picked) and the one that fetches that asset's named faces (so an excluded person's
 face never appears among an otherwise-eligible asset's candidates, even if a co-appearing person on
 the same photo isn't excluded).
+
+## Per-player scoping
+
+Players don't share a library: each links their own Immich account (`users.immich_user_id` plus
+an encrypted API key, see [docs/IMMICH_API_KEY.md](../IMMICH_API_KEY.md)), and `api/deps.py`'s
+`get_immich_service` builds a request-scoped `ImmichService(user_id=..., api_key=...)` for them.
+Every query in `services/immich/` applies the helpers in `services/immich/_scope.py`, which mirror
+what that user sees in Immich:
+
+| | Visible to user U |
+|---|---|
+| Assets | `ownerId = U` (except the locked folder), or owned by a partner sharing with U and on their timeline. External libraries are ordinary assets owned by the library owner. |
+| People | U's own `person` row per cluster. Asset counts only count faces on assets U can see. |
+| Albums | Any album U is an `album_user` of. Their assets aren't further filtered, since an album member sees all of them. |
+
+`user_id=None` is unscoped (one `person` row per cluster, preferring a named, visible one). It's
+only for admin views (`get_admin_immich_service`) and the ML embedding cache, which is per face
+cluster, not per player. A player without a linked account gets `ImmichNotLinkedError` → 409
+`immich_not_linked` from every route that needs Immich.
+
+Daily challenges follow the same split: one `daily_challenges` row per (day, game_type, mode,
+user), generated from that player's own library. The daily leaderboard ranks all of a day's
+challenges for a mode together.
 
 ## Query techniques worth knowing
 

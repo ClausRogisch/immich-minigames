@@ -60,6 +60,14 @@ export function ProfilePage() {
           <dt className="text-sm font-semibold text-muted">{t("auth.fields.email")}</dt>
           <dd className="text-[15px] text-ink">{user.email}</dd>
         </div>
+        <div>
+          <dt className="text-sm font-semibold text-muted">{t("auth.profile.immich.label")}</dt>
+          <dd className="text-[15px] text-ink">
+            {user.immich_account
+              ? `${user.immich_account.name} (${user.immich_account.email})`
+              : t("auth.profile.immich.notConnected")}
+          </dd>
+        </div>
       </dl>
 
       <p className="mt-6 text-center text-sm text-faint">
@@ -72,6 +80,13 @@ export function ProfilePage() {
         onClick={() => navigate("/profile/edit")}
       >
         {t("auth.profile.edit")}
+      </Button>
+      <Button
+        variant={user.immich_account ? "secondary" : "primary"}
+        className="mt-3 w-full py-2.5"
+        onClick={() => navigate("/profile/immich")}
+      >
+        {t("auth.profile.immich.title")}
       </Button>
       <Button
         variant="secondary"

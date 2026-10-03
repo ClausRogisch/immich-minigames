@@ -77,6 +77,7 @@ There are two separate Compose files - use one or both depending on your situati
 |---|---|---|
 | `docker-compose.yml` | Immich itself (server + ML + Postgres + Redis) | Only if you don't already have an Immich instance running |
 | `docker-compose.app.yml` | This app's backend + frontend (pulled from GHCR) | Always |
+| `docker-compose.build.yml` | Override: builds those two images from this checkout instead | Only to run your own changes (see [Building the images locally](#building-the-images-locally)) |
 
 If you already run Immich elsewhere, skip straight to step 3 and point `DB_HOST`/`IMMICH_SERVER_URL`
 at your existing instance instead.
@@ -98,8 +99,7 @@ cp .env.example .env
 docker compose up -d
 ```
 
-Open `http://localhost:2283` to finish Immich's setup wizard, then create an API key at
-**Account Settings > API Keys** - you'll need it in the next step.
+Open `http://localhost:2283` to finish Immich's setup wizard.
 
 ### 3. Configure and start the minigames app
 
@@ -107,8 +107,9 @@ Finish filling in your `.env` (create it from `.env.example` if you skipped step
 
 - `DB_APP_USERNAME` / `DB_APP_PASSWORD` - pick any credentials; this app provisions the role itself
   (see below), it doesn't need to already exist
-- `IMMICH_API_KEY` - the key you created in step 2 (or from your existing Immich instance)
-- `JWT_SECRET` - generate with `openssl rand -hex 32`
+- `JWT_SECRET` and `IMMICH_KEY_ENCRYPTION_SECRET` - generate each with `openssl rand -hex 32`
+- `IMMICH_API_KEY` - optional. Every player connects their own Immich API key inside the app (see
+  below), so this is only a fallback for admin views.
 - If pointing at an Immich instance *not* started by this repo's own `docker-compose.yml`, also set
   `DB_HOST`, `DB_PORT`, `DB_USERNAME`, `DB_PASSWORD`, `DB_DATABASE_NAME`, and `IMMICH_SERVER_URL` to
   match it
@@ -135,11 +136,34 @@ leave it unset to let the first registration through with no code at all. Either
 closes itself the moment any account exists — further accounts always need a real invite, minted
 from the Admin panel by an existing admin (see "Creating an admin account" below).
 
+**Each player connects their own Immich account.** After signing up, the app asks for an Immich API
+key (Immich → *Account Settings → API Keys*, with the `user.read`, `asset.view` and `person.read`
+permissions). From then on, that player's games only use what their Immich user can see: their own
+library including external libraries, their partners' shared photos, and albums shared with them.
+Daily challenges are per player too. See [docs/IMMICH_API_KEY.md](docs/IMMICH_API_KEY.md) for the
+details to share with your players.
+
+External libraries need no extra configuration or volume mounts: the app reads metadata from
+Immich's database and gets images through Immich's API.
+
 If you later rotate `DB_APP_PASSWORD` in `.env`, re-run just the role step:
 
 ```bash
 docker compose -f docker-compose.app.yml run --rm db-init
 ```
+
+### Building the images locally
+
+To run your own changes (or not depend on GHCR), build the backend and frontend images from this
+checkout. `docker-compose.build.yml` is an override that only swaps the images for locally built
+ones (tagged `immich-minigames-{backend,frontend}:local`). Everything else still comes from
+`docker-compose.app.yml`:
+
+```bash
+docker compose -f docker-compose.app.yml -f docker-compose.build.yml up -d --build
+```
+
+Re-run the same command after pulling new commits to rebuild.
 
 ### Development Setup
 

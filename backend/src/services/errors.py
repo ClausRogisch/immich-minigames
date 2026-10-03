@@ -48,3 +48,21 @@ class DailyNotEnabledError(Exception):
 class DailyAlreadyPlayedError(Exception):
     """Raised by create_daily_game when the caller already has a game for today's challenge of
     this (game_type, mode) - one attempt per day. main.py maps this to a 409."""
+
+
+class ImmichNotLinkedError(Exception):
+    """Raised when a request needs the caller's own Immich account (anything that reads photos,
+    people or albums - see services/immich/_scope.py) but they haven't linked one yet, or the key
+    they linked can't be decrypted anymore. api/error_handlers.py maps this to a 409 the frontend
+    recognizes by its detail and turns into a "connect your Immich account" prompt."""
+
+    DETAIL = "immich_not_linked"
+
+    def __init__(self) -> None:
+        super().__init__(self.DETAIL)
+
+
+class ImmichKeyRejectedError(Exception):
+    """Raised when linking an Immich API key fails validation (unreachable Immich, an invalid key,
+    or one missing a required permission) - the message says which, and is shown to the player.
+    api/error_handlers.py maps this to a 400."""

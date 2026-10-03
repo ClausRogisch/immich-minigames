@@ -30,11 +30,20 @@ class Settings(BaseSettings):
     db_host: str = "localhost"
     db_port: int = 5432
 
-    # Used to call Immich's own REST API (not Postgres) to serve image bytes - see
-    # docs/ARCHITECTURE/IMMICH.md's "Dos formas de hablar con Immich". Create the key from Immich
-    # at Account Settings > API Keys.
-    immich_api_key: str
+    # Images are fetched from Immich's REST API (not Postgres, see docs/ARCHITECTURE/IMMICH.md's
+    # "Dos formas de hablar con Immich") with each *player's own* API key, linked from their profile
+    # (docs/IMMICH_API_KEY.md) - so Immich only ever serves them photos they can see themselves.
+    # This installation-wide key is optional: it's only a fallback for admins who haven't linked a
+    # key of their own, for the admin panel's views (reported photos, etc.). Never used for a
+    # regular player's request.
+    immich_api_key: str | None = None
     immich_server_url: str = "http://localhost:2283"
+
+    # Encrypts players' linked Immich API keys at rest (services/immich_key_vault.py). Falls back
+    # to a key derived from JWT_SECRET when unset - set it explicitly so rotating JWT_SECRET (which
+    # logs everyone out) doesn't also force every player to relink their Immich key. Generate with
+    # `openssl rand -hex 32`.
+    immich_key_encryption_secret: str | None = None
 
     # Public URL the *browser* uses to open Immich directly ("Ver en Immich" buttons) -
     # distinct from immich_server_url above, which is how the *backend* reaches Immich and is often an

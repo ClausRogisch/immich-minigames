@@ -52,6 +52,30 @@ def _next_date() -> date:
     return _BASE_DATE + timedelta(days=next(_date_counter) * 1000)
 
 
+def _make_player(session) -> UserModel:
+    unique = uuid.uuid4().hex[:8]
+    user = UserModel(
+        email=f"daily-player-{unique}@example.com",
+        username=f"daily-player-{unique}",
+        full_name="Daily Player",
+        password_hash="irrelevant",
+    )
+    session.add(user)
+    session.commit()
+    return user
+
+
+# Daily challenges are per player (persistence/daily.py) - every test in this file generates them on
+# behalf of one throwaway player, made fresh per test so no two tests share a challenge history.
+_player: UserModel
+
+
+@pytest.fixture(autouse=True)
+def _fresh_player(db_session):
+    global _player
+    _player = _make_player(db_session)
+
+
 @pytest.fixture(autouse=True)
 def _clean_daily_configs(db_session):
     # Same rationale as test_daily_settings_service.py's cleanup fixture - daily_configs rows are
@@ -73,7 +97,9 @@ class TestSpecShapePerGame:
     def test_more_or_less_person_assets_chain_length(self, daily_challenge_service, daily_settings_service):
         daily_settings_service.update_settings(MORE_OR_LESS_TYPE, MODE_PERSON_ASSETS, values={"chain_length": 10})
 
-        challenge = daily_challenge_service.get_or_create_challenge(_next_date(), MORE_OR_LESS_TYPE, MODE_PERSON_ASSETS)
+        challenge = daily_challenge_service.get_or_create_challenge(
+            _next_date(), MORE_OR_LESS_TYPE, MODE_PERSON_ASSETS, _player.id
+        )
 
         assert len(challenge.spec["chain"]) == 11  # chain_length + 1
         assert "id" in challenge.spec["chain"][0]
@@ -81,17 +107,17 @@ class TestSpecShapePerGame:
     def test_more_or_less_album_assets_chain_length(self, daily_challenge_service, daily_settings_service):
         daily_settings_service.update_settings(MORE_OR_LESS_TYPE, MODE_ALBUM_ASSETS, values={"chain_length": 10})
 
-        challenge = daily_challenge_service.get_or_create_challenge(_next_date(), MORE_OR_LESS_TYPE, MODE_ALBUM_ASSETS)
+        challenge = daily_challenge_service.get_or_create_challenge(
+            _next_date(), MORE_OR_LESS_TYPE, MODE_ALBUM_ASSETS, _player.id
+        )
 
         assert len(challenge.spec["chain"]) == 11
 
     def test_more_or_less_person_birth_date_chain_length(self, daily_challenge_service, daily_settings_service):
-        daily_settings_service.update_settings(
-            MORE_OR_LESS_TYPE, MODE_PERSON_BIRTH_DATE, values={"chain_length": 10}
-        )
+        daily_settings_service.update_settings(MORE_OR_LESS_TYPE, MODE_PERSON_BIRTH_DATE, values={"chain_length": 10})
 
         challenge = daily_challenge_service.get_or_create_challenge(
-            _next_date(), MORE_OR_LESS_TYPE, MODE_PERSON_BIRTH_DATE
+            _next_date(), MORE_OR_LESS_TYPE, MODE_PERSON_BIRTH_DATE, _player.id
         )
 
         assert len(challenge.spec["chain"]) == 11
@@ -101,7 +127,7 @@ class TestSpecShapePerGame:
         daily_settings_service.update_settings(GEOGUESSR_TYPE, MODE_DISTANCE_BETWEEN_GUESS, values={"total_rounds": 2})
 
         challenge = daily_challenge_service.get_or_create_challenge(
-            _next_date(), GEOGUESSR_TYPE, MODE_DISTANCE_BETWEEN_GUESS
+            _next_date(), GEOGUESSR_TYPE, MODE_DISTANCE_BETWEEN_GUESS, _player.id
         )
 
         assert len(challenge.spec["rounds"]) == 2
@@ -111,13 +137,17 @@ class TestSpecShapePerGame:
     def test_dateguessr_rounds(self, daily_challenge_service, daily_settings_service):
         daily_settings_service.update_settings(DATEGUESSR_TYPE, MODE_DAYS_TO_DATE, values={"total_rounds": 2})
 
-        challenge = daily_challenge_service.get_or_create_challenge(_next_date(), DATEGUESSR_TYPE, MODE_DAYS_TO_DATE)
+        challenge = daily_challenge_service.get_or_create_challenge(
+            _next_date(), DATEGUESSR_TYPE, MODE_DAYS_TO_DATE, _player.id
+        )
 
         assert len(challenge.spec["rounds"]) == 2
         assert "date" in challenge.spec["rounds"][0]["main"]
 
     def test_immichdle_target(self, daily_challenge_service):
-        challenge = daily_challenge_service.get_or_create_challenge(_next_date(), IMMICHDLE_TYPE, MODE_PERSON)
+        challenge = daily_challenge_service.get_or_create_challenge(
+            _next_date(), IMMICHDLE_TYPE, MODE_PERSON, _player.id
+        )
 
         assert "id" in challenge.spec["target"]
         assert "name" in challenge.spec["target"]
@@ -128,7 +158,7 @@ class TestSpecShapePerGame:
         )
 
         challenge = daily_challenge_service.get_or_create_challenge(
-            _next_date(), WHOS_THAT_PERSON_TYPE, MODE_NAMED_FACES
+            _next_date(), WHOS_THAT_PERSON_TYPE, MODE_NAMED_FACES, _player.id
         )
 
         assert sum(len(r["faces"]) for r in challenge.spec["rounds"]) >= 2
@@ -140,7 +170,7 @@ class TestSpecShapePerGame:
         daily_settings_service.update_settings(GEOGUESSR_TYPE, MODE_DISTANCE_BETWEEN_GUESS, values={"total_rounds": 2})
 
         challenge = daily_challenge_service.get_or_create_challenge(
-            _next_date(), GEOGUESSR_TYPE, MODE_DISTANCE_BETWEEN_GUESS
+            _next_date(), GEOGUESSR_TYPE, MODE_DISTANCE_BETWEEN_GUESS, _player.id
         )
 
         assert challenge.settings["total_rounds"] == 2
@@ -151,7 +181,9 @@ class TestSpecShapePerGame:
         # timeline test below for that half).
         daily_settings_service.update_settings(TIMELINE_TYPE, TIMELINE_MODE_ARCADE, values={"chain_length": 10})
 
-        challenge = daily_challenge_service.get_or_create_challenge(_next_date(), TIMELINE_TYPE, TIMELINE_MODE_ARCADE)
+        challenge = daily_challenge_service.get_or_create_challenge(
+            _next_date(), TIMELINE_TYPE, TIMELINE_MODE_ARCADE, _player.id
+        )
 
         assert len(challenge.spec["cards"]) == 11  # chain_length + 1 (the seed card)
         assert "id" in challenge.spec["cards"][0]
@@ -162,7 +194,9 @@ class TestSpecShapePerGame:
         # self-contained question, so chain_length questions means exactly chain_length rounds.
         daily_settings_service.update_settings(TRIVIUM_TYPE, TRIVIUM_MODE_BIRTHDAY, values={"chain_length": 10})
 
-        challenge = daily_challenge_service.get_or_create_challenge(_next_date(), TRIVIUM_TYPE, TRIVIUM_MODE_BIRTHDAY)
+        challenge = daily_challenge_service.get_or_create_challenge(
+            _next_date(), TRIVIUM_TYPE, TRIVIUM_MODE_BIRTHDAY, _player.id
+        )
 
         assert len(challenge.spec["questions"]) == 10
         first = challenge.spec["questions"][0]
@@ -175,23 +209,23 @@ class TestGetOrCreateIsIdempotent:
     def test_second_call_returns_the_same_row(self, daily_challenge_service):
         d = _next_date()
 
-        first = daily_challenge_service.get_or_create_challenge(d, IMMICHDLE_TYPE, MODE_PERSON)
-        second = daily_challenge_service.get_or_create_challenge(d, IMMICHDLE_TYPE, MODE_PERSON)
+        first = daily_challenge_service.get_or_create_challenge(d, IMMICHDLE_TYPE, MODE_PERSON, _player.id)
+        second = daily_challenge_service.get_or_create_challenge(d, IMMICHDLE_TYPE, MODE_PERSON, _player.id)
 
         assert first.id == second.id
         assert first.spec == second.spec
 
-    def test_timeline_two_players_get_the_same_card_sequence(self, daily_challenge_service):
-        # "Dos jugadores ven la misma secuencia": the second call is a different player's own
-        # request for the same day, not a retry - it must land on the exact same persisted spec
-        # rather than generating a fresh chain.
+    def test_two_players_get_their_own_challenge_for_the_same_day(self, daily_challenge_service, db_session):
+        # Players don't share a library (services/immich/_scope.py), so they don't share a daily
+        # either - a second player's request for the same day builds their own row.
         d = _next_date()
+        other = _make_player(db_session)
 
-        first = daily_challenge_service.get_or_create_challenge(d, TIMELINE_TYPE, TIMELINE_MODE_ARCADE)
-        second = daily_challenge_service.get_or_create_challenge(d, TIMELINE_TYPE, TIMELINE_MODE_ARCADE)
+        first = daily_challenge_service.get_or_create_challenge(d, TIMELINE_TYPE, TIMELINE_MODE_ARCADE, _player.id)
+        second = daily_challenge_service.get_or_create_challenge(d, TIMELINE_TYPE, TIMELINE_MODE_ARCADE, other.id)
 
-        assert first.id == second.id
-        assert first.spec == second.spec
+        assert first.id != second.id
+        assert (first.user_id, second.user_id) == (_player.id, other.id)
 
 
 class TestExclusionWindow:
@@ -200,20 +234,35 @@ class TestExclusionWindow:
         day1 = _next_date()
         day2 = day1 + timedelta(days=1)
 
-        first = daily_challenge_service.get_or_create_challenge(day1, IMMICHDLE_TYPE, MODE_PERSON)
-        second = daily_challenge_service.get_or_create_challenge(day2, IMMICHDLE_TYPE, MODE_PERSON)
+        first = daily_challenge_service.get_or_create_challenge(day1, IMMICHDLE_TYPE, MODE_PERSON, _player.id)
+        second = daily_challenge_service.get_or_create_challenge(day2, IMMICHDLE_TYPE, MODE_PERSON, _player.id)
 
         assert first.spec["target"]["id"] != second.spec["target"]["id"]
+
+    def test_window_only_covers_the_players_own_history(
+        self, daily_challenge_service, daily_settings_service, db_session
+    ):
+        daily_settings_service.update_settings(IMMICHDLE_TYPE, MODE_PERSON, values={"no_repeat_days": 3})
+        day1 = _next_date()
+        other = _make_player(db_session)
+        daily_challenge_service.get_or_create_challenge(day1, IMMICHDLE_TYPE, MODE_PERSON, other.id)
+
+        assert (
+            daily_challenge_service._collect_recent_exclusion_ids(
+                IMMICHDLE_TYPE, MODE_PERSON, day1 + timedelta(days=1), 3, _player.id
+            )
+            == frozenset()
+        )
 
     def test_outside_the_window_repetition_is_allowed(self, daily_challenge_service, daily_settings_service):
         daily_settings_service.update_settings(IMMICHDLE_TYPE, MODE_PERSON, values={"no_repeat_days": 1})
         day1 = _next_date()
         day2 = day1 + timedelta(days=5)  # well outside the 1-day window
 
-        first = daily_challenge_service.get_or_create_challenge(day1, IMMICHDLE_TYPE, MODE_PERSON)
+        first = daily_challenge_service.get_or_create_challenge(day1, IMMICHDLE_TYPE, MODE_PERSON, _player.id)
         # Just needs to succeed without raising - day2 isn't excluding day1's target at all, so
         # whatever it picks (possibly even the same person again) is valid.
-        second = daily_challenge_service.get_or_create_challenge(day2, IMMICHDLE_TYPE, MODE_PERSON)
+        second = daily_challenge_service.get_or_create_challenge(day2, IMMICHDLE_TYPE, MODE_PERSON, _player.id)
 
         assert first is not None
         assert second is not None
@@ -226,8 +275,10 @@ class TestExclusionWindow:
         day1 = _next_date()
         day2 = day1 + timedelta(days=1)
 
-        first = daily_challenge_service.get_or_create_challenge(day1, MORE_OR_LESS_TYPE, MODE_PERSON_ASSETS)
-        second = daily_challenge_service.get_or_create_challenge(day2, MORE_OR_LESS_TYPE, MODE_PERSON_ASSETS)
+        first = daily_challenge_service.get_or_create_challenge(day1, MORE_OR_LESS_TYPE, MODE_PERSON_ASSETS, _player.id)
+        second = daily_challenge_service.get_or_create_challenge(
+            day2, MORE_OR_LESS_TYPE, MODE_PERSON_ASSETS, _player.id
+        )
 
         assert len(first.spec["chain"]) == 11
         assert len(second.spec["chain"]) == 11
@@ -243,8 +294,8 @@ class TestExclusionWindow:
         day1 = _next_date()
         day2 = day1 + timedelta(days=1)
 
-        first = daily_challenge_service.get_or_create_challenge(day1, TIMELINE_TYPE, TIMELINE_MODE_ARCADE)
-        second = daily_challenge_service.get_or_create_challenge(day2, TIMELINE_TYPE, TIMELINE_MODE_ARCADE)
+        first = daily_challenge_service.get_or_create_challenge(day1, TIMELINE_TYPE, TIMELINE_MODE_ARCADE, _player.id)
+        second = daily_challenge_service.get_or_create_challenge(day2, TIMELINE_TYPE, TIMELINE_MODE_ARCADE, _player.id)
 
         first_ids = {card["id"] for card in first.spec["cards"]}
         second_ids = {card["id"] for card in second.spec["cards"]}
@@ -261,8 +312,8 @@ class TestExclusionWindow:
         day1 = _next_date()
         day2 = day1 + timedelta(days=1)
 
-        first = daily_challenge_service.get_or_create_challenge(day1, TRIVIUM_TYPE, TRIVIUM_MODE_BIRTHDAY)
-        second = daily_challenge_service.get_or_create_challenge(day2, TRIVIUM_TYPE, TRIVIUM_MODE_BIRTHDAY)
+        first = daily_challenge_service.get_or_create_challenge(day1, TRIVIUM_TYPE, TRIVIUM_MODE_BIRTHDAY, _player.id)
+        second = daily_challenge_service.get_or_create_challenge(day2, TRIVIUM_TYPE, TRIVIUM_MODE_BIRTHDAY, _player.id)
 
         first_ids = {q["subject_id"] for q in first.spec["questions"]}
         second_ids = {q["subject_id"] for q in second.spec["questions"]}
@@ -275,7 +326,7 @@ class TestFallbackWithoutHistoricalExclusion:
     ):
         daily_settings_service.update_settings(IMMICHDLE_TYPE, MODE_PERSON, values={"no_repeat_days": 3})
         day0 = _next_date()
-        seeded = daily_challenge_service.get_or_create_challenge(day0, IMMICHDLE_TYPE, MODE_PERSON)
+        seeded = daily_challenge_service.get_or_create_challenge(day0, IMMICHDLE_TYPE, MODE_PERSON, _player.id)
         excluded_id = seeded.spec["target"]["id"]
 
         real_get_persons = immich_service.get_persons
@@ -288,7 +339,7 @@ class TestFallbackWithoutHistoricalExclusion:
         monkeypatch.setattr(immich_service, "get_persons", fake_get_persons)
 
         day1 = day0 + timedelta(days=1)
-        fallen_back = daily_challenge_service.get_or_create_challenge(day1, IMMICHDLE_TYPE, MODE_PERSON)
+        fallen_back = daily_challenge_service.get_or_create_challenge(day1, IMMICHDLE_TYPE, MODE_PERSON, _player.id)
 
         # Falls back to picking *some* target rather than raising - the dev library has more than
         # one named person, so the fallback (no historical exclusion) isn't guaranteed to land back
@@ -301,7 +352,7 @@ class TestFallbackWithoutHistoricalExclusion:
         monkeypatch.setattr(immich_service, "get_persons", lambda **kwargs: [])
 
         with pytest.raises(Exception, match="not enough named people"):
-            daily_challenge_service.get_or_create_challenge(_next_date(), IMMICHDLE_TYPE, MODE_PERSON)
+            daily_challenge_service.get_or_create_challenge(_next_date(), IMMICHDLE_TYPE, MODE_PERSON, _player.id)
 
 
 def _make_reporter(session) -> UserModel:
@@ -327,7 +378,9 @@ class TestReportsExclusion:
         reporter = _make_reporter(db_session)
         reports_service.create(reporter.id, "person", reported.id, ["person_name_face_mismatch"], None)
 
-        challenge = daily_challenge_service.get_or_create_challenge(_next_date(), IMMICHDLE_TYPE, MODE_PERSON)
+        challenge = daily_challenge_service.get_or_create_challenge(
+            _next_date(), IMMICHDLE_TYPE, MODE_PERSON, _player.id
+        )
 
         assert challenge.spec["target"]["id"] != str(reported.id)
 
@@ -335,6 +388,9 @@ class TestReportsExclusion:
 class TestConcurrentGeneration:
     def test_two_racing_generations_agree_on_one_challenge(self, immich_service):
         d = _next_date()
+        # Read once here: the threads below must not lazy-load attributes off `_player`, which is
+        # bound to the test's own (not thread-safe) session.
+        player_id = _player.id
         results: dict[str, object] = {}
         barrier = threading.Barrier(2)
 
@@ -343,7 +399,7 @@ class TestConcurrentGeneration:
             try:
                 service = DailyChallengeService(session, immich_service)
                 barrier.wait(timeout=2)
-                results[key] = service.get_or_create_challenge(d, IMMICHDLE_TYPE, MODE_PERSON)
+                results[key] = service.get_or_create_challenge(d, IMMICHDLE_TYPE, MODE_PERSON, player_id)
             finally:
                 session.close()
 

@@ -1,6 +1,7 @@
 """
-Generates the shared, pre-computed content every player of a (challenge_date, game_type, mode)
-plays that day (see persistence/daily.py's DailyChallengeModel). Content generation itself is
+Generates the pre-computed content one player plays for a (challenge_date, game_type, mode) - each
+player gets their own, built from their own Immich library, since players don't share one (see
+persistence/daily.py's DailyChallengeModel and services/immich/_scope.py). Content generation itself is
 entirely delegated to each game's own `games/<game>/daily.py::build_spec()` (games/daily.py's
 DailySupport contract) - this module owns only what's genuinely generic across every game: the
 challenge date, the advisory lock, the race-safe insert, the cross-day exclusion window, and the
@@ -9,6 +10,9 @@ wrapper (_ExcludingImmichService) that applies it.
 Named DailyChallengeService (not "daily games") because services/daily_games_service.py's
 DailyGamesService is a different thing - this one generates the shared challenge content, that one
 turns a generated challenge into a specific player's played game.
+
+`immich_service` must be scoped to the same player as the `user_id` passed to
+get_or_create_challenge - api/deps.py builds both from the logged-in player.
 """
 
 from datetime import date, timedelta
@@ -62,8 +66,10 @@ class DailyChallengeService:
         # reports_service - existing callers that predate reports-exclusion keep working.
         self._reports_service = reports_service or ReportsService(session)
 
-    def get_or_create_challenge(self, challenge_date: date, game_type: str, mode: str) -> DailyChallengeModel:
-        existing = self._get_challenge(challenge_date, game_type, mode)
+    def get_or_create_challenge(
+        self, challenge_date: date, game_type: str, mode: str, user_id: UUID
+    ) -> DailyChallengeModel:
+        existing = self._get_challenge(challenge_date, game_type, mode, user_id)
         if existing is not None:
             return existing
 
@@ -74,16 +80,15 @@ class DailyChallengeService:
         # request teardown's rollback on failure, always frees it), then finds the winner's row on
         # the re-SELECT right after. The ON CONFLICT insert below stays as the correctness
         # backstop; this lock is purely about not duplicating the generation work.
-        self._session.execute(
-            select(func.pg_advisory_xact_lock(func.hashtextextended(f"daily:{challenge_date}:{game_type}:{mode}", 0)))
-        )
-        existing = self._get_challenge(challenge_date, game_type, mode)
+        lock_key = f"daily:{challenge_date}:{game_type}:{mode}:{user_id}"
+        self._session.execute(select(func.pg_advisory_xact_lock(func.hashtextextended(lock_key, 0))))
+        existing = self._get_challenge(challenge_date, game_type, mode, user_id)
         if existing is not None:
             return existing
 
         settings = self._daily_settings_service.get_settings(game_type, mode)
         no_repeat_days = int(settings.get("no_repeat_days", 0))
-        exclude_ids = self._collect_recent_exclusion_ids(game_type, mode, challenge_date, no_repeat_days)
+        exclude_ids = self._collect_recent_exclusion_ids(game_type, mode, challenge_date, no_repeat_days, user_id)
 
         try:
             spec = self._build_spec(game_type, mode, settings, exclude_ids)
@@ -103,29 +108,38 @@ class DailyChallengeService:
         stmt = (
             pg_insert(DailyChallengeModel)
             .values(
-                id=uuid4(), challenge_date=challenge_date, game_type=game_type, mode=mode, spec=spec, settings=settings
+                id=uuid4(),
+                challenge_date=challenge_date,
+                game_type=game_type,
+                mode=mode,
+                user_id=user_id,
+                spec=spec,
+                settings=settings,
             )
-            .on_conflict_do_nothing(constraint="uq_daily_challenges_date_type_mode")
+            .on_conflict_do_nothing(constraint="uq_daily_challenges_date_type_mode_user")
         )
         self._session.execute(stmt)
         self._session.commit()
 
-        winner = self._get_challenge(challenge_date, game_type, mode)
+        winner = self._get_challenge(challenge_date, game_type, mode, user_id)
         if winner is None:  # either our INSERT or the racing one must have landed
             raise RuntimeError(f"daily challenge for {challenge_date}/{game_type}/{mode} vanished after insert")
         return winner
 
-    def _get_challenge(self, challenge_date: date, game_type: str, mode: str) -> DailyChallengeModel | None:
+    def _get_challenge(
+        self, challenge_date: date, game_type: str, mode: str, user_id: UUID
+    ) -> DailyChallengeModel | None:
         return self._session.execute(
             select(DailyChallengeModel).where(
                 DailyChallengeModel.challenge_date == challenge_date,
                 DailyChallengeModel.game_type == game_type,
                 DailyChallengeModel.mode == mode,
+                DailyChallengeModel.user_id == user_id,
             )
         ).scalar_one_or_none()
 
     def _collect_recent_exclusion_ids(
-        self, game_type: str, mode: str, before_date: date, no_repeat_days: int
+        self, game_type: str, mode: str, before_date: date, no_repeat_days: int, user_id: UUID
     ) -> frozenset[UUID]:
         if no_repeat_days <= 0:
             return frozenset()
@@ -140,6 +154,7 @@ class DailyChallengeService:
                     DailyChallengeModel.mode == mode,
                     DailyChallengeModel.challenge_date >= cutoff,
                     DailyChallengeModel.challenge_date < before_date,
+                    DailyChallengeModel.user_id == user_id,
                 )
             )
             .scalars()

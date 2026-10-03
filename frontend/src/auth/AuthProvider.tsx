@@ -5,13 +5,16 @@ import type { ReactNode } from "react"
 import {
   changePassword as apiChangePassword,
   getMe,
+  linkImmich as apiLinkImmich,
   login as apiLogin,
   logout as apiLogout,
   register as apiRegister,
+  unlinkImmich as apiUnlinkImmich,
   updateProfile as apiUpdateProfile,
   updateSkin as apiUpdateSkin,
 } from "../api/auth"
 import { apiClient } from "../api/client"
+import { isImmichNotLinked } from "../api/errors"
 import { clearCache } from "../api/queryCache"
 import { clearApiCache } from "../pwa/clearApiCache"
 import { unsubscribeDeviceEverywhere } from "../pwa/unsubscribeDevice"
@@ -59,6 +62,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setPendingRedirectFrom(window.location.pathname)
           setUser(null)
         }
+        // Same idea for the player's Immich link: a 409 immich_not_linked mid-use means Immich
+        // rejected their stored key (revoked/expired). Marking the account unlinked locally is
+        // enough - RequireImmich.tsx reacts by sending them to link a new one.
+        if (isImmichNotLinked(error)) {
+          setUser((current) => (current ? { ...current, immich_account: null } : current))
+        }
         return Promise.reject(error)
       },
     )
@@ -105,9 +114,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return updated
   }
 
+  async function linkImmich(apiKey: string) {
+    const updated = await apiLinkImmich(apiKey)
+    setUser(updated)
+    // Everything cached so far belongs to whichever library was linked before (or none).
+    clearCache()
+    return updated
+  }
+
+  async function unlinkImmich() {
+    const updated = await apiUnlinkImmich()
+    setUser(updated)
+    clearCache()
+    return updated
+  }
+
   return (
     <AuthContext.Provider
-      value={{ user, loading, login, register, logout, updateProfile, updateSkin, changePassword }}
+      value={{
+        user,
+        loading,
+        login,
+        register,
+        logout,
+        updateProfile,
+        updateSkin,
+        changePassword,
+        linkImmich,
+        unlinkImmich,
+      }}
     >
       {children}
     </AuthContext.Provider>

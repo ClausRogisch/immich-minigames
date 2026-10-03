@@ -2,8 +2,10 @@ import uuid
 from uuid import UUID
 
 from conftest import mint_invite_code
+from sqlalchemy import text
 
 from persistence.users import UserModel
+from services import immich_key_vault
 from services.auth_service import AuthService
 
 
@@ -135,17 +137,58 @@ class TestUpdateUser:
         assert response.status_code == 403
 
 
+def _link_immich(db_session, user_id, immich_user_id) -> None:
+    """Links an account to an Immich user directly in the DB - a skin is validated against the
+    *target's* own library (api/admin_api.py), which needs one."""
+    user = db_session.get(UserModel, UUID(user_id))
+    user.immich_user_id = immich_user_id
+    user.immich_api_key_encrypted = immich_key_vault.encrypt("unused-in-these-tests")
+    db_session.commit()
+
+
+def _a_named_person(immich_engine):
+    """(owner Immich user id, person id) of some named, visible person row."""
+    with immich_engine.connect() as conn:
+        return conn.execute(
+            text(
+                """SELECT "ownerId", "personGroupId" FROM person
+                   WHERE name != '' AND NOT "isHidden" AND "thumbnailPath" != '' LIMIT 1"""
+            )
+        ).one()
+
+
 class TestUpdateUserSkin:
-    def test_admin_can_set_another_users_skin_to_a_real_person(self, client, db_session, immich_service):
-        [person] = immich_service.get_persons(named_only=True, limit=1)
+    def test_admin_can_set_another_users_skin_to_a_real_person(self, client, db_session, immich_engine):
+        owner_id, person_id = _a_named_person(immich_engine)
+        target = _register(client)
+        _link_immich(db_session, target["id"], owner_id)
+        admin = _register(client)
+        _promote_to_admin(db_session, admin["id"])
+
+        response = client.put(f"/api/v1/admin/users/{target['id']}/skin", json={"person_id": str(person_id)})
+
+        assert response.status_code == 200
+        assert response.json()["skin_person_id"] == str(person_id)
+
+    def test_a_person_outside_the_targets_library_returns_404(self, client, db_session, immich_engine):
+        _, person_id = _a_named_person(immich_engine)
+        target = _register(client)
+        _link_immich(db_session, target["id"], uuid.uuid4())  # an Immich user with no people at all
+        admin = _register(client)
+        _promote_to_admin(db_session, admin["id"])
+
+        response = client.put(f"/api/v1/admin/users/{target['id']}/skin", json={"person_id": str(person_id)})
+
+        assert response.status_code == 404
+
+    def test_target_without_a_linked_immich_account_returns_409(self, client, db_session):
         target = _register(client)
         admin = _register(client)
         _promote_to_admin(db_session, admin["id"])
 
-        response = client.put(f"/api/v1/admin/users/{target['id']}/skin", json={"person_id": str(person.id)})
+        response = client.put(f"/api/v1/admin/users/{target['id']}/skin", json={"person_id": str(uuid.uuid4())})
 
-        assert response.status_code == 200
-        assert response.json()["skin_person_id"] == str(person.id)
+        assert response.status_code == 409
 
     def test_admin_can_clear_another_users_skin(self, client, db_session):
         target = _register(client)
@@ -157,8 +200,9 @@ class TestUpdateUserSkin:
         assert response.status_code == 200
         assert response.json()["skin_person_id"] is None
 
-    def test_unknown_person_id_returns_404(self, client, db_session):
+    def test_unknown_person_id_returns_404(self, client, db_session, immich_engine):
         target = _register(client)
+        _link_immich(db_session, target["id"], _a_named_person(immich_engine)[0])
         admin = _register(client)
         _promote_to_admin(db_session, admin["id"])
 

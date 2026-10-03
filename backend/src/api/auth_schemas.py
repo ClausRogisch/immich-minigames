@@ -49,6 +49,18 @@ class UpdateSkinIn(BaseModel):
     person_id: UUID | None
 
 
+class LinkImmichIn(BaseModel):
+    # The player's own Immich API key - see docs/IMMICH_API_KEY.md for the permissions it needs.
+    api_key: str = Field(min_length=1, max_length=512)
+
+
+class ImmichAccountOut(BaseModel):
+    """Which Immich account a player is linked to. Never carries the key itself."""
+
+    name: str
+    email: str
+
+
 class UserOut(BaseModel):
     id: UUID
     email: str
@@ -57,6 +69,8 @@ class UserOut(BaseModel):
     skin_person_id: UUID | None
     is_admin: bool
     created_at: datetime
+    # None until the player links their Immich account - the frontend gates every game on this.
+    immich_account: ImmichAccountOut | None
 
     @classmethod
     def from_user(cls, user: UserModel) -> "UserOut":
@@ -68,4 +82,9 @@ class UserOut(BaseModel):
             skin_person_id=user.skin_person_id,
             is_admin=user.is_admin,
             created_at=user.created_at,
+            immich_account=(
+                ImmichAccountOut(name=user.immich_user_name or "", email=user.immich_user_email or "")
+                if user.immich_api_key_encrypted
+                else None
+            ),
         )

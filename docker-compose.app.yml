@@ -6,6 +6,8 @@
 #
 # Usage: docker compose -f docker-compose.app.yml up -d
 # Then open http://localhost:${FRONTEND_PORT:-3000}.
+# To build the images from this checkout instead of pulling them, add docker-compose.build.yml:
+#   docker compose -f docker-compose.app.yml -f docker-compose.build.yml up -d --build
 #
 # `db-init` runs once before `backend` and provisions both the scoped Postgres role the backend
 # actually runs as AND this app's own database (see backend/src/scripts/bootstrap_db_role.py) -
@@ -75,7 +77,10 @@ services:
       DB_APP_PASSWORD: ${DB_APP_PASSWORD}
       IMMICH_SERVER_URL: ${IMMICH_SERVER_URL:-http://host.docker.internal:2283}
       IMMICH_EXTERNAL_URL: ${IMMICH_EXTERNAL_URL}
-      IMMICH_API_KEY: ${IMMICH_API_KEY}
+      # Optional - each player links their own key in the app (docs/IMMICH_API_KEY.md); this one is
+      # only a fallback for admin views. See .env.example.
+      IMMICH_API_KEY: ${IMMICH_API_KEY:-}
+      IMMICH_KEY_ENCRYPTION_SECRET: ${IMMICH_KEY_ENCRYPTION_SECRET:-}
       JWT_SECRET: ${JWT_SECRET}
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
       ADMIN_EMAIL: ${ADMIN_EMAIL}

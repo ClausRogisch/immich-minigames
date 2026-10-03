@@ -15,7 +15,7 @@ from games.immichdle import GAME_TYPE as IMMICHDLE_TYPE
 from games.immichdle import MODE_PERSON
 from games.more_or_less import GAME_TYPE as MORE_OR_LESS_TYPE
 from games.more_or_less import MODE_PERSON_ASSETS
-from persistence.daily import DailyConfigModel
+from persistence.daily import DailyChallengeModel, DailyConfigModel
 from persistence.games import GameModel
 from services.errors import DailyAlreadyPlayedError, DailyNotEnabledError, UnsupportedGameError
 
@@ -120,9 +120,11 @@ class TestCreateDailyGame:
 
         assert second is not None
 
-    def test_two_players_get_identical_scripted_content(
-        self, games_service, daily_games_service, daily_settings_service, auth_service
+    def test_each_player_plays_their_own_challenge(
+        self, games_service, daily_games_service, daily_settings_service, auth_service, db_session
     ):
+        # Players don't share a library (services/immich/_scope.py), so each gets their own
+        # challenge for the day instead of one shared one.
         daily_settings_service.update_settings(
             GEOGUESSR_TYPE, MODE_DISTANCE_BETWEEN_GUESS, enabled=True, values={"total_rounds": 3}
         )
@@ -137,8 +139,33 @@ class TestCreateDailyGame:
             game_type=GEOGUESSR_TYPE, mode=MODE_DISTANCE_BETWEEN_GUESS, user_id=bob.id, today=d
         )
 
-        assert a.rounds[0].asset.latitude == b.rounds[0].asset.latitude
-        assert a.rounds[0].asset.longitude == b.rounds[0].asset.longitude
+        challenge_a = db_session.get(DailyChallengeModel, db_session.get(GameModel, a.id).daily_challenge_id)
+        challenge_b = db_session.get(DailyChallengeModel, db_session.get(GameModel, b.id).daily_challenge_id)
+        assert challenge_a.id != challenge_b.id
+        assert (challenge_a.user_id, challenge_b.user_id) == (alice.id, bob.id)
+
+    def test_a_game_on_the_shared_pre_upgrade_challenge_counts_as_played(
+        self, games_service, daily_games_service, daily_settings_service, auth_service, db_session
+    ):
+        # On the day migration 0016 runs, a player may already have played that day's shared
+        # (user_id NULL) challenge - they must not get a second attempt on a new per-player one.
+        daily_settings_service.update_settings(IMMICHDLE_TYPE, MODE_PERSON, enabled=True)
+        user = _register_user(auth_service)
+        d = _next_date()
+        shared = DailyChallengeModel(challenge_date=d, game_type=IMMICHDLE_TYPE, mode=MODE_PERSON, spec={}, settings={})
+        db_session.add(shared)
+        db_session.flush()
+        db_session.add(
+            GameModel(
+                user_id=user.id, game_type=IMMICHDLE_TYPE, mode=MODE_PERSON, finished=True, daily_challenge_id=shared.id
+            )
+        )
+        db_session.commit()
+
+        with pytest.raises(DailyAlreadyPlayedError):
+            daily_games_service.create_daily_game(game_type=IMMICHDLE_TYPE, mode=MODE_PERSON, user_id=user.id, today=d)
+        statuses = {(s.game_type, s.mode): s for s in daily_games_service.get_daily_status(user.id, today=d)}
+        assert statuses[(IMMICHDLE_TYPE, MODE_PERSON)].status == "finished"
 
     def test_does_not_abandon_an_in_progress_normal_game(
         self, games_service, daily_games_service, daily_settings_service, db_session, auth_service

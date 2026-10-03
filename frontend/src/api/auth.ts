@@ -58,6 +58,19 @@ export async function updateSkin(personId: string | null): Promise<User> {
   return data
 }
 
+// Links the player's own Immich account - the backend validates the key against Immich before
+// storing it (see backend/src/api/auth_api.py's link_immich), so a 400 here carries a reason worth
+// showing as-is (invalid key, missing permission, Immich unreachable).
+export async function linkImmich(apiKey: string): Promise<User> {
+  const { data } = await apiClient.put<User>("/auth/me/immich", { api_key: apiKey })
+  return data
+}
+
+export async function unlinkImmich(): Promise<User> {
+  const { data } = await apiClient.delete<User>("/auth/me/immich")
+  return data
+}
+
 // The public counterpart of changePassword: no session to preserve (the caller is
 // by definition logged out), so no cookie comes back - ResetPasswordPage.tsx sends them to /login
 // afterward. No skipAuthRedirect needed either: this route has no auth dependency, so it can never

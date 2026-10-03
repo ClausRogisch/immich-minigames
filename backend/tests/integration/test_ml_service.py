@@ -21,7 +21,7 @@ _PERSON_AVG_BEFORE_QUERY = text("""
     SELECT avg(fs.embedding)::text AS avg_embedding, count(*) AS n
     FROM asset_face af
     JOIN face_search fs ON fs."faceId" = af.id
-    WHERE af."personId" = :person_id AND af."deletedAt" IS NULL AND af."isVisible" AND af."updatedAt" <= :watermark
+    WHERE af."personGroupId" = :person_id AND af."deletedAt" IS NULL AND af."isVisible" AND af."updatedAt" <= :watermark
 """)
 
 
@@ -310,7 +310,7 @@ class TestIncrementalMatchesFullRecompute:
                         text(
                             'SELECT DISTINCT af."updatedAt" FROM asset_face af '
                             'JOIN face_search fs ON fs."faceId" = af.id '
-                            'WHERE af."personId" = :person_id AND af."deletedAt" IS NULL AND af."isVisible" '
+                            'WHERE af."personGroupId" = :person_id AND af."deletedAt" IS NULL AND af."isVisible" '
                             'ORDER BY af."updatedAt"'
                         ),
                         {"person_id": str(candidate.id)},

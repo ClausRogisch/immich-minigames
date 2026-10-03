@@ -37,3 +37,13 @@ class UserModel(Base):
     # server-side session table. NULL for every pre-existing account until its first password
     # change - see the migration (0010) and get_user_from_token for how that NULL is handled.
     password_changed_at: Mapped[datetime | None] = mapped_column(default=None)
+    # The player's own linked Immich account (api/auth_api.py's PUT /auth/me/immich). Every game,
+    # search and thumbnail is scoped to what this Immich user can see (services/immich/_scope.py),
+    # with images fetched using their own API key - stored encrypted, see
+    # services/immich_key_vault.py, and never returned by any endpoint. All NULL until linked; a
+    # player without a linked account can log in but not play. immich_user_name/_email are just a
+    # display snapshot from link time ("connected as ..."), not used for anything else.
+    immich_user_id: Mapped[UUID | None] = mapped_column(default=None)
+    immich_api_key_encrypted: Mapped[str | None] = mapped_column(default=None)
+    immich_user_name: Mapped[str | None] = mapped_column(default=None)
+    immich_user_email: Mapped[str | None] = mapped_column(default=None)

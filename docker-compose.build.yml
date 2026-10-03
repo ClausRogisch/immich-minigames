@@ -1,0 +1,30 @@
+#
+# Builds the backend/frontend images from this checkout instead of pulling them from GHCR - an
+# override layered on top of docker-compose.app.yml, which stays the single source of truth for
+# everything else (environment, ports, healthchecks, db-init ordering):
+#
+#   docker compose -f docker-compose.app.yml -f docker-compose.build.yml up -d --build
+#
+# The images are tagged `immich-minigames-{backend,frontend}:local`, so they never shadow the GHCR
+# tags. pull_policy: build makes `up` (re)build them rather than ever trying to pull those local
+# tags from a registry. Rebuild after pulling new commits with the same command (`--build`).
+#
+
+services:
+  db-init:
+    image: immich-minigames-backend:local
+    build:
+      context: ./backend
+    pull_policy: build
+
+  backend:
+    image: immich-minigames-backend:local
+    build:
+      context: ./backend
+    pull_policy: build
+
+  frontend:
+    image: immich-minigames-frontend:local
+    build:
+      context: ./frontend
+    pull_policy: build

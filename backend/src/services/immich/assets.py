@@ -13,6 +13,7 @@ from persistence.immich_tables import asset, asset_exif, asset_file
 
 from ._random import sample_by_id_pivot
 from ._rows import row_to_asset
+from ._scope import visible_asset
 
 MediaType = Literal["photo", "video", "any"]
 LocationField = Literal["city", "country"]
@@ -20,6 +21,7 @@ LocationField = Literal["city", "country"]
 
 def get_assets(
     engine: Engine,
+    user_id: UUID | None,
     *,
     media_type: MediaType = "any",
     with_location: bool | None = None,
@@ -66,6 +68,7 @@ def get_assets(
             asset.c.status == "active",
             asset.c.visibility == "timeline",
             asset.c.deletedAt.is_(None),
+            visible_asset(user_id),
             has_thumbnail,
         )
     )
@@ -119,7 +122,7 @@ def get_assets(
     return [row_to_asset(row) for row in rows]
 
 
-def get_distinct_locations(engine: Engine, field: LocationField) -> list[str]:
+def get_distinct_locations(engine: Engine, user_id: UUID | None, field: LocationField) -> list[str]:
     """Every distinct non-null value of `field` among visible assets - powers Trivium's
     location_country/location_city distractors, which have to be real places that actually appear
     somewhere in the library, never invented strings. Not restricted to assets with a thumbnail
@@ -134,6 +137,7 @@ def get_distinct_locations(engine: Engine, field: LocationField) -> list[str]:
             asset.c.status == "active",
             asset.c.visibility == "timeline",
             asset.c.deletedAt.is_(None),
+            visible_asset(user_id),
             column.is_not(None),
         )
     )

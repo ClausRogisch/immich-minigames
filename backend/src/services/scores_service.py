@@ -104,7 +104,9 @@ class ScoresService:
     def get_daily_leaderboard(
         self, game_type: str, mode: str, challenge_date: date, today: date | None = None
     ) -> list[DailyLeaderboardEntry]:
-        """Top 15 accounts by score for *one specific day's* challenge, not a
+        """Top 15 accounts by score for *one specific day's* daily of this mode (every player's own
+        challenge for that day ranked together - players don't share a library, so each gets their
+        own content, see persistence/daily.py), not a
         rolling window like get_leaderboard's all/weekly/daily - a date with no challenge for this
         (game_type, mode) simply has no entries, not an error. Entries of *today's* leaderboard also
         carry that user's current streak (see GameRepository.daily_streaks); on a past date the
@@ -113,11 +115,7 @@ class ScoresService:
         if (game_type, mode) not in GAMES:
             raise UnsupportedGameError(f"unsupported game/mode: {game_type}/{mode}")
 
-        challenge_id = self._repository.daily_challenge_id(game_type, mode, challenge_date)
-        if challenge_id is None:
-            return []
-
-        rows = self._repository.daily_leaderboard_rows(challenge_id)
+        rows = self._repository.daily_leaderboard_rows(game_type, mode, challenge_date)
         user_ids = [user_id for user_id, _, _, _ in rows]
         streaks = (
             self._repository.daily_streaks(game_type, mode, challenge_date, user_ids)

@@ -112,22 +112,21 @@ class GameRepository:
             stmt = stmt.where(GameModel.created_at >= func.date_trunc(trunc_unit, func.now()))
         return self._session.execute(stmt).all()
 
-    def daily_challenge_id(self, game_type: str, mode: str, challenge_date: date) -> UUID | None:
-        return self._session.execute(
-            select(DailyChallengeModel.id).where(
-                DailyChallengeModel.challenge_date == challenge_date,
-                DailyChallengeModel.game_type == game_type,
-                DailyChallengeModel.mode == mode,
-            )
-        ).scalar_one_or_none()
-
-    def daily_leaderboard_rows(self, challenge_id: UUID) -> Sequence[Row]:
+    def daily_leaderboard_rows(self, game_type: str, mode: str, challenge_date: date) -> Sequence[Row]:
+        """Every player's finished daily game of this (game_type, mode) on this day - across all of
+        that day's challenges, since each player gets their own (persistence/daily.py)."""
         best_score = func.max(GameModel.score).label("best_score")
         stmt = (
             select(UserModel.id, UserModel.username, UserModel.skin_person_id, best_score)
             .select_from(GameModel)
             .join(UserModel, UserModel.id == GameModel.user_id)
-            .where(GameModel.daily_challenge_id == challenge_id, GameModel.finished.is_(True))
+            .join(DailyChallengeModel, DailyChallengeModel.id == GameModel.daily_challenge_id)
+            .where(
+                DailyChallengeModel.challenge_date == challenge_date,
+                DailyChallengeModel.game_type == game_type,
+                DailyChallengeModel.mode == mode,
+                GameModel.finished.is_(True),
+            )
             .group_by(UserModel.id, UserModel.username, UserModel.skin_person_id)
             .order_by(best_score.desc())
             .limit(15)
@@ -221,26 +220,42 @@ class GameRepository:
             streaks[key] = streak
         return streaks
 
-    def has_played_challenge(self, challenge_id: UUID, user_id: UUID) -> bool:
+    def has_played_daily(self, challenge_date: date, game_type: str, mode: str, user_id: UUID) -> bool:
+        """Whether this player already has a game for any of this day's (game_type, mode)
+        challenges - their own, or (on the day migration 0016 ran) the shared pre-0016 one."""
         return (
             self._session.execute(
-                select(GameModel.id).where(GameModel.daily_challenge_id == challenge_id, GameModel.user_id == user_id)
+                select(GameModel.id)
+                .join(DailyChallengeModel, DailyChallengeModel.id == GameModel.daily_challenge_id)
+                .where(
+                    DailyChallengeModel.challenge_date == challenge_date,
+                    DailyChallengeModel.game_type == game_type,
+                    DailyChallengeModel.mode == mode,
+                    GameModel.user_id == user_id,
+                )
+                .limit(1)
             ).scalar_one_or_none()
             is not None
         )
 
     def challenges_for_date(
-        self, today: date, modes: Sequence[tuple[str, str]]
+        self, today: date, modes: Sequence[tuple[str, str]], user_id: UUID
     ) -> dict[tuple[str, str], DailyChallengeModel]:
-        return {
-            (challenge.game_type, challenge.mode): challenge
-            for challenge in self._session.execute(
-                select(DailyChallengeModel).where(
-                    DailyChallengeModel.challenge_date == today,
-                    tuple_(DailyChallengeModel.game_type, DailyChallengeModel.mode).in_(modes),
-                )
-            ).scalars()
-        }
+        """This player's challenge per mode for `today`. A shared pre-0016 challenge (user_id NULL)
+        only stands in for a mode the player has no challenge of their own for yet, so a game
+        already played on it on the upgrade day still reads as played."""
+        result: dict[tuple[str, str], DailyChallengeModel] = {}
+        for challenge in self._session.execute(
+            select(DailyChallengeModel).where(
+                DailyChallengeModel.challenge_date == today,
+                tuple_(DailyChallengeModel.game_type, DailyChallengeModel.mode).in_(modes),
+                or_(DailyChallengeModel.user_id == user_id, DailyChallengeModel.user_id.is_(None)),
+            )
+        ).scalars():
+            key = (challenge.game_type, challenge.mode)
+            if key not in result or challenge.user_id is not None:
+                result[key] = challenge
+        return result
 
     def games_for_challenges(self, challenge_ids: Sequence[UUID], user_id: UUID) -> dict[UUID, GameModel]:
         if not challenge_ids:

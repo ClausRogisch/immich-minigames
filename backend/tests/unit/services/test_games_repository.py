@@ -31,16 +31,16 @@ def _register_user(auth_service):
 
 
 def _finished_daily_game(db_session, user_id, day, game_type, mode=_MODE):
-    # Get-or-create the challenge - a real (day, game_type, mode) challenge is one row shared by
-    # every player of it, not one per player (see persistence/daily.py's own unique constraint),
-    # so a test giving two different users the same day/game_type/mode has to reuse the same row.
+    # Each player has their own challenge per (day, game_type, mode) - see persistence/daily.py.
     challenge = (
         db_session.query(DailyChallengeModel)
-        .filter_by(challenge_date=day, game_type=game_type, mode=mode)
+        .filter_by(challenge_date=day, game_type=game_type, mode=mode, user_id=user_id)
         .one_or_none()
     )
     if challenge is None:
-        challenge = DailyChallengeModel(challenge_date=day, game_type=game_type, mode=mode, spec={}, settings={})
+        challenge = DailyChallengeModel(
+            challenge_date=day, game_type=game_type, mode=mode, user_id=user_id, spec={}, settings={}
+        )
         db_session.add(challenge)
         db_session.flush()
     game = GameModel(user_id=user_id, game_type=game_type, mode=mode, finished=True, daily_challenge_id=challenge.id)

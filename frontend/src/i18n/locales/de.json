@@ -335,6 +335,21 @@
         "save": "Passwort ändern",
         "saved": "Passwort geändert"
       },
+      "immich": {
+        "title": "Immich-Verbindung",
+        "label": "Immich-Konto",
+        "notConnected": "Nicht verbunden",
+        "intro": "Die Spiele verwenden die Fotos, Personen und Alben deines eigenen Immich-Kontos. Verbinde es mit einem API-Schlüssel, um loszuspielen.",
+        "connectedAs": "Verbunden als {{name}} ({{email}}). Die Spiele verwenden die Fotos, Personen und Alben, die dieses Immich-Konto sehen kann.",
+        "apiKey": "Immich-API-Schlüssel",
+        "howTo": "Erstelle ihn in Immich unter Kontoeinstellungen → API-Schlüssel, mit diesen Berechtigungen:",
+        "howToLinked": "Erstelle ihn unter <link>Immich → Kontoeinstellungen → API-Schlüssel</link>, mit diesen Berechtigungen:",
+        "save": "Verbinden",
+        "replace": "Schlüssel ersetzen",
+        "saved": "Immich-Konto verbunden",
+        "removed": "Immich-Konto getrennt",
+        "disconnect": "Trennen"
+      },
       "skin": {
         "label": "Skin",
         "none": "Keine",

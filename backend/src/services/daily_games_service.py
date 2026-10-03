@@ -57,10 +57,14 @@ class DailyGamesService:
         if not self._daily_settings_service.is_enabled(game_type, mode):
             raise DailyNotEnabledError(f"{game_type}/{mode} is not enabled for the daily rotation")
 
-        challenge = self._daily_challenge_service.get_or_create_challenge(today or date.today(), game_type, mode)
-
-        if self._repository.has_played_challenge(challenge.id, user_id):
+        today = today or date.today()
+        # Checked before generating, not after: a player who already played today needs no
+        # challenge of their own built (and on the upgrade day may have played the shared pre-0016
+        # one, which a check against their own new challenge would miss).
+        if self._repository.has_played_daily(today, game_type, mode, user_id):
             raise DailyAlreadyPlayedError(f"already played today's {game_type}/{mode} challenge")
+
+        challenge = self._daily_challenge_service.get_or_create_challenge(today, game_type, mode, user_id)
 
         game = self._factory.build_daily(game_type, mode, challenge, game_id=uuid4())
 
@@ -85,7 +89,7 @@ class DailyGamesService:
 
         # Two queries total (today's challenges for every enabled mode, then the caller's games for
         # those challenges) rather than two per mode - same results, keyed back to each mode below.
-        challenge_by_mode = self._repository.challenges_for_date(today, enabled_modes)
+        challenge_by_mode = self._repository.challenges_for_date(today, enabled_modes, user_id)
         game_by_challenge_id = (
             self._repository.games_for_challenges([c.id for c in challenge_by_mode.values()], user_id)
             if challenge_by_mode

@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from api.auth_schemas import (
     ChangePasswordIn,
+    LinkImmichIn,
     LoginIn,
     RegisterIn,
     ResetPasswordIn,
@@ -18,12 +19,14 @@ from api.auth_schemas import (
     UpdateSkinIn,
     UserOut,
 )
-from api.deps import get_db_session, get_immich_service
+from api.deps import get_current_user, get_db_session, get_immich_service
 from api.rate_limit import enforce_login_email_limit, limiter
-from config import get_settings
+from config import Settings, get_settings
 from persistence.users import UserModel
-from services.auth_service import AuthService, UnauthorizedError
+from services import immich_key_vault
+from services.auth_service import AuthService
 from services.immich import ImmichService
+from services.immich.account import verify_api_key
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -32,19 +35,6 @@ _COOKIE_NAME = "access_token"
 
 def get_auth_service(session: Annotated[Session, Depends(get_db_session)]) -> AuthService:
     return AuthService(session)
-
-
-def get_current_user(request: Request) -> UserModel:
-    """Resolves the current user from request.state, where api/auth_middleware.py already placed
-    it for every request that reaches here (anything outside its allow-list). Routes declare
-    Depends(get_current_user) as their auth dependency, decoupled from where the identity itself
-    comes from. The defensive None-check below should never actually trigger (the middleware
-    guarantees state.user is set for anything that isn't allow-listed, and no allow-listed route
-    uses this dependency), but costs nothing to keep."""
-    user = getattr(request.state, "user", None)
-    if user is None:
-        raise UnauthorizedError("not authenticated")
-    return user
 
 
 def _cookie_attrs() -> dict[str, object]:
@@ -173,3 +163,37 @@ def update_skin(
             raise HTTPException(status_code=404, detail=f"person {body.person_id} not found")
     updated = auth_service.set_skin(user, body.person_id)
     return UserOut.from_user(updated)
+
+
+@router.put("/me/immich", response_model=UserOut)
+# Each call makes two outbound requests to Immich - and a wrong key is worth slowing down.
+@limiter.limit("5/minute")
+def link_immich(
+    request: Request,
+    body: LinkImmichIn,
+    user: Annotated[UserModel, Depends(get_current_user)],
+    auth_service: Annotated[AuthService, Depends(get_auth_service)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> UserOut:
+    """Links the caller's own Immich account: validates the key against Immich (which user it
+    belongs to, and that it has every permission this app needs - services/immich/account.py),
+    then stores it encrypted. From then on everything the caller plays is scoped to that Immich
+    user's library. Re-linking replaces the previous key."""
+    api_key = body.api_key.strip()
+    account = verify_api_key(settings, api_key)
+    updated = auth_service.link_immich(
+        user,
+        immich_user_id=account.user_id,
+        encrypted_api_key=immich_key_vault.encrypt(api_key, settings),
+        name=account.name,
+        email=account.email,
+    )
+    return UserOut.from_user(updated)
+
+
+@router.delete("/me/immich", response_model=UserOut)
+def unlink_immich(
+    user: Annotated[UserModel, Depends(get_current_user)],
+    auth_service: Annotated[AuthService, Depends(get_auth_service)],
+) -> UserOut:
+    return UserOut.from_user(auth_service.unlink_immich(user))
