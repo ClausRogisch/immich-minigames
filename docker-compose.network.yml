@@ -1,0 +1,8 @@
+services:
+  db-init:
+    networks: [immich]
+  backend:
+    networks: [default, immich]
+networks:
+  immich:
+    external: true

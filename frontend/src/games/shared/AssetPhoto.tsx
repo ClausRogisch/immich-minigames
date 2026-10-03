@@ -117,8 +117,13 @@ export function AssetPhoto({
   }
 
   useNonPassiveWheel(containerRef, (e) => {
+    // Null once the photo failed: React reuses this same <div> node for the failed placeholder
+    // below (same tag, same position), so the wheel listener attached at mount outlives the ref.
+    // Nothing to zoom then - let the page scroll normally.
+    const container = containerRef.current
+    if (!container) return
     e.preventDefault()
-    const rect = containerRef.current!.getBoundingClientRect()
+    const rect = container.getBoundingClientRect()
     const cursorX = e.clientX - rect.left - rect.width / 2
     const cursorY = e.clientY - rect.top - rect.height / 2
     setScale((prevScale) => {
@@ -148,7 +153,9 @@ export function AssetPhoto({
       )
     },
     onPinchStart: (a, b) => {
-      const rect = containerRef.current!.getBoundingClientRect()
+      const container = containerRef.current
+      if (!container) return
+      const rect = container.getBoundingClientRect()
       pinchStartRef.current = {
         startDistance: Math.max(Math.hypot(a.x - b.x, a.y - b.y), 1),
         startScale: scaleRef.current,
